@@ -24,8 +24,8 @@ import org.apache.streampark.console.core.bean.AlertConfigParams;
 import org.apache.streampark.console.core.entity.AlertConfig;
 import org.apache.streampark.console.core.entity.Application;
 import org.apache.streampark.console.core.mapper.AlertConfigMapper;
-import org.apache.streampark.console.core.service.ApplicationService;
 import org.apache.streampark.console.core.service.alert.AlertConfigService;
+import org.apache.streampark.console.core.service.application.ApplicationInfoService;
 
 import org.apache.commons.collections.CollectionUtils;
 
@@ -47,12 +47,12 @@ import java.util.stream.Collectors;
 public class AlertConfigServiceImpl extends ServiceImpl<AlertConfigMapper, AlertConfig>
     implements AlertConfigService {
 
-  @Autowired private ApplicationService applicationService;
+  @Autowired private ApplicationInfoService applicationInfoService;
 
   @Override
   public IPage<AlertConfigParams> page(AlertConfigParams params, RestRequest request) {
     // build query conditions
-    LambdaQueryWrapper<AlertConfig> wrapper = new LambdaQueryWrapper();
+    LambdaQueryWrapper<AlertConfig> wrapper = new LambdaQueryWrapper<>();
     wrapper.eq(params.getUserId() != null, AlertConfig::getUserId, params.getUserId());
 
     Page<AlertConfig> page = new MybatisPager<AlertConfig>().getDefaultPage(request);
@@ -69,14 +69,14 @@ public class AlertConfigServiceImpl extends ServiceImpl<AlertConfigMapper, Alert
 
   @Override
   public boolean exist(AlertConfig alertConfig) {
-    AlertConfig confByName = this.baseMapper.getAlertConfByName(alertConfig);
+    AlertConfig confByName = this.baseMapper.selectAlertConfByName(alertConfig);
     return confByName != null;
   }
 
   @Override
-  public boolean deleteById(Long id) throws AlertException {
+  public boolean removeById(Long id) throws AlertException {
     long count =
-        applicationService.count(
+        applicationInfoService.count(
             new LambdaQueryWrapper<Application>().eq(id != null, Application::getAlertId, id));
     if (count > 0) {
       throw new AlertException(
@@ -84,6 +84,6 @@ public class AlertConfigServiceImpl extends ServiceImpl<AlertConfigMapper, Alert
               "AlertId:%d, this is bound by application. Please clear the configuration first",
               id));
     }
-    return removeById(id);
+    return super.removeById(id);
   }
 }

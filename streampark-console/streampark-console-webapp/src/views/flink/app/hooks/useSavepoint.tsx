@@ -17,9 +17,9 @@
 import Icon from '/@/components/Icon';
 import { useMessage } from '/@/hooks/web/useMessage';
 import { useI18n } from '/@/hooks/web/useI18n';
-import { Form, Input, Switch} from 'ant-design-vue';
-import { fetchCheckSavepointPath } from '/@/api/flink/app/app';
-import { trigger } from '/@/api/flink/app/savepoint';
+import { Form, Input, Switch } from 'ant-design-vue';
+import { fetchCheckSavepointPath } from '/@/api/flink/app';
+import { trigger } from '/@/api/flink/savepoint';
 import { ref, unref } from 'vue';
 
 export const useSavepoint = (updateOption: Fn) => {
@@ -86,7 +86,7 @@ export const useSavepoint = (updateOption: Fn) => {
                 checkedValue={true}
                 unCheckedValue={false}
                 checked={nativeFormat.value}
-                onClick={(checked, e) => (nativeFormat.value = checked || false)}
+                onClick={(checked, _) => (nativeFormat.value = (checked as boolean) || false)}
               />
             </Form.Item>
           </Form>

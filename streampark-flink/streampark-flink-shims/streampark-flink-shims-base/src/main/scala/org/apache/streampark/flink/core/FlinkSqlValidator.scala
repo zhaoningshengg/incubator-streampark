@@ -17,16 +17,14 @@
 package org.apache.streampark.flink.core
 
 import org.apache.streampark.common.enums.FlinkSqlValidationFailedType
-import org.apache.streampark.common.util.{Logger, Utils}
+import org.apache.streampark.common.util.{ExceptionUtils, Logger}
 import org.apache.streampark.flink.core.SqlCommand._
 
 import org.apache.calcite.config.Lex
 import org.apache.calcite.sql.parser.SqlParser
 import org.apache.calcite.sql.parser.SqlParser.Config
-import org.apache.flink.api.common.RuntimeExecutionMode
-import org.apache.flink.configuration.ExecutionOptions
 import org.apache.flink.sql.parser.validate.FlinkSqlConformance
-import org.apache.flink.table.api.{SqlDialect, TableConfig}
+import org.apache.flink.table.api.SqlDialect
 import org.apache.flink.table.api.SqlDialect.{DEFAULT, HIVE}
 import org.apache.flink.table.api.config.TableConfigOptions
 import org.apache.flink.table.planner.delegation.FlinkSqlParserFactories
@@ -45,15 +43,15 @@ object FlinkSqlValidator extends Logger {
 
   private[this] lazy val sqlParserConfigMap: Map[String, SqlParser.Config] = {
     def getConfig(sqlDialect: SqlDialect): Config = {
-      val tableConfig = new TableConfig()
-      tableConfig.getConfiguration.set(
-        ExecutionOptions.RUNTIME_MODE,
-        RuntimeExecutionMode.STREAMING)
-      tableConfig.getConfiguration.set(
-        TableConfigOptions.TABLE_SQL_DIALECT,
-        sqlDialect.name().toLowerCase())
       val conformance = sqlDialect match {
-        case HIVE => FlinkSqlConformance.HIVE
+        case HIVE =>
+          try {
+            FlinkSqlConformance.HIVE
+          } catch {
+            // for flink 1.18+
+            case _: NoSuchFieldError => FlinkSqlConformance.DEFAULT
+            case e => throw new IllegalArgumentException("Init Flink sql Dialect error: ", e)
+          }
         case DEFAULT => FlinkSqlConformance.DEFAULT
         case _ => throw new UnsupportedOperationException(s"Unsupported sqlDialect: $sqlDialect")
       }
@@ -71,11 +69,11 @@ object FlinkSqlValidator extends Logger {
 
   def verifySql(sql: String): FlinkSqlValidationResult = {
     val sqlCommands = SqlCommandParser.parseSQL(sql, r => return r)
-    var sqlDialect = "default"
+    var sqlDialect = SqlDialect.DEFAULT.name().toLowerCase()
     var hasInsert = false
     for (call <- sqlCommands) {
       val args = call.operands.head
-      lazy val command = call.command
+      val command = call.command
       command match {
         case SET | RESET =>
           if (command == SET && args == TableConfigOptions.TABLE_SQL_DIALECT.key()) {
@@ -104,7 +102,7 @@ object FlinkSqlValidator extends Logger {
             }
           } match {
             case Failure(e) =>
-              val exception = Utils.stringifyException(e)
+              val exception = ExceptionUtils.stringifyException(e)
               val causedBy = exception.drop(exception.indexOf("Caused by:"))
               val cleanUpError = exception.replaceAll("[\r\n]", "")
               if (SYNTAX_ERROR_REGEXP.findAllMatchIn(cleanUpError).nonEmpty) {

@@ -30,8 +30,8 @@
   import { useMonaco } from '/@/hooks/web/useMonaco';
   import { Select, Tabs, Alert, Tag, Space, Form } from 'ant-design-vue';
   import { useMessage } from '/@/hooks/web/useMessage';
-  import { fetchUpload } from '/@/api/flink/app/app';
-  import { fetchUploadJars } from '/@/api/flink/app/flinkHistory';
+  import { fetchUpload } from '/@/api/flink/app';
+  import { fetchUploadJars } from '/@/api/flink/flinkHistory';
   import UploadJobJar from './UploadJobJar.vue';
 
   interface DependencyType {
@@ -74,7 +74,7 @@
   const { t } = useI18n();
   const defaultValue = '';
   const { Swal } = useMessage();
-  const { onChange, setContent } = useMonaco(pomBox, {
+  const { onChange, setContent, getContent } = useMonaco(pomBox, {
     language: 'xml',
     code: props.value || defaultValue,
     options: {
@@ -99,7 +99,8 @@
     const classifierExp = /<classifier>([\s\S]*?)<\/classifier>/;
     const exclusionsExp = /<exclusions>([\s\S]*?)<\/exclusions>/;
     const invalidArtifact: Array<string> = [];
-    props.value
+    const propsValue = await getContent();
+    propsValue
       .split('</dependency>')
       .filter((x) => x.replace(/\\s+/, '') !== '')
       .forEach((dep) => {

@@ -19,11 +19,11 @@ package org.apache.streampark.console.system.service.impl;
 
 import org.apache.streampark.console.base.domain.RestRequest;
 import org.apache.streampark.console.base.exception.ApiAlertException;
-import org.apache.streampark.console.core.enums.UserType;
-import org.apache.streampark.console.core.service.ApplicationService;
+import org.apache.streampark.console.core.enums.UserTypeEnum;
 import org.apache.streampark.console.core.service.CommonService;
 import org.apache.streampark.console.core.service.ProjectService;
 import org.apache.streampark.console.core.service.VariableService;
+import org.apache.streampark.console.core.service.application.ApplicationInfoService;
 import org.apache.streampark.console.system.entity.Team;
 import org.apache.streampark.console.system.entity.User;
 import org.apache.streampark.console.system.mapper.TeamMapper;
@@ -52,7 +52,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team> implements Te
 
   @Autowired private UserService userService;
 
-  @Autowired private ApplicationService applicationService;
+  @Autowired private ApplicationInfoService applicationInfoService;
 
   @Autowired private ProjectService projectService;
 
@@ -63,15 +63,15 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team> implements Te
   @Autowired private CommonService commonService;
 
   @Override
-  public IPage<Team> findTeams(Team team, RestRequest request) {
+  public IPage<Team> getPage(Team team, RestRequest request) {
     Page<Team> page = new Page<>();
     page.setCurrent(request.getPageNum());
     page.setSize(request.getPageSize());
-    return this.baseMapper.findTeam(page, team);
+    return this.baseMapper.selectPage(page, team);
   }
 
   @Override
-  public Team findByName(String teamName) {
+  public Team getByName(String teamName) {
     LambdaQueryWrapper<Team> queryWrapper =
         new LambdaQueryWrapper<Team>().eq(Team::getTeamName, teamName);
     return baseMapper.selectOne(queryWrapper);
@@ -79,7 +79,7 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team> implements Te
 
   @Override
   public void createTeam(Team team) {
-    Team existedTeam = findByName(team.getTeamName());
+    Team existedTeam = getByName(team.getTeamName());
     ApiAlertException.throwIfFalse(
         existedTeam == null,
         String.format(
@@ -92,32 +92,30 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team> implements Te
   }
 
   @Override
-  public void deleteTeam(Long teamId) {
+  public void removeById(Long teamId) {
     log.info("{} Proceed delete team[Id={}]", commonService.getCurrentUser().getUsername(), teamId);
     Team team = this.getById(teamId);
-    // TODO The AssertUtils.checkApiAlert can simplify the exception.
-    if (team == null) {
-      throw new ApiAlertException(String.format("The team[Id=%s] doesn't exists.", teamId));
-    }
-    if (applicationService.existsByTeamId(teamId)) {
-      throw new ApiAlertException(
-          String.format(
-              "Please delete the applications under the team[name=%s] first!", team.getTeamName()));
-    }
-    if (projectService.existsByTeamId(teamId)) {
-      throw new ApiAlertException(
-          String.format(
-              "Please delete the projects under the team[name=%s] first!", team.getTeamName()));
-    }
-    if (variableService.existsByTeamId(teamId)) {
-      throw new ApiAlertException(
-          String.format(
-              "Please delete the variables under the team[name=%s] first!", team.getTeamName()));
-    }
 
-    memberService.deleteByTeamId(teamId);
+    ApiAlertException.throwIfNull(team, String.format("The team[Id=%s] doesn't exist.", teamId));
+
+    ApiAlertException.throwIfTrue(
+        applicationInfoService.existsByTeamId(teamId),
+        String.format(
+            "Please delete the applications under the team[name=%s] first!", team.getTeamName()));
+
+    ApiAlertException.throwIfTrue(
+        projectService.existsByTeamId(teamId),
+        String.format(
+            "Please delete the projects under the team[name=%s] first!", team.getTeamName()));
+
+    ApiAlertException.throwIfTrue(
+        variableService.existsByTeamId(teamId),
+        String.format(
+            "Please delete the variables under the team[name=%s] first!", team.getTeamName()));
+
+    memberService.removeByTeamId(teamId);
     userService.clearLastTeam(teamId);
-    this.removeById(teamId);
+    super.removeById(teamId);
   }
 
   @Override
@@ -137,15 +135,15 @@ public class TeamServiceImpl extends ServiceImpl<TeamMapper, Team> implements Te
   }
 
   @Override
-  public List<Team> findUserTeams(Long userId) {
+  public List<Team> listByUserId(Long userId) {
     User user =
         Optional.ofNullable(userService.getById(userId))
             .orElseThrow(
                 () -> new ApiAlertException(String.format("The userId [%s] not found.", userId)));
     // Admin has the permission for all teams.
-    if (UserType.ADMIN.equals(user.getUserType())) {
+    if (UserTypeEnum.ADMIN == user.getUserType()) {
       return this.list();
     }
-    return baseMapper.findUserTeams(userId);
+    return baseMapper.selectTeamsByUserId(userId);
   }
 }

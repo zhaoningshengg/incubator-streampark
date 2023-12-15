@@ -17,13 +17,17 @@
 
 package org.apache.streampark.flink.kubernetes.v2.operator
 
+import org.apache.streampark.common.Constant
 import org.apache.streampark.flink.kubernetes.v2.{pathLastSegment, yamlMapper}
 import org.apache.streampark.flink.kubernetes.v2.K8sTools.usingK8sClient
 import org.apache.streampark.flink.kubernetes.v2.fs.FileMirror
 import org.apache.streampark.flink.kubernetes.v2.model.{FlinkDeploymentDef, FlinkSessionJobDef, JobDef}
 import org.apache.streampark.flink.kubernetes.v2.observer.FlinkK8sObserver
+import org.apache.streampark.flink.kubernetes.v2.operator.OprError.FlinkDeploymentCRDNotFound
 
 import io.fabric8.kubernetes.api.model._
+import io.fabric8.kubernetes.api.model.apiextensions.v1.CustomResourceDefinitionList
+import io.fabric8.kubernetes.client.CustomResource
 import org.apache.flink.v1beta1.{FlinkDeployment, FlinkSessionJob}
 import zio.{IO, UIO, ZIO}
 import zio.stream.ZStream
@@ -60,15 +64,17 @@ object CROperator extends CROperator {
   override def applyDeployment(spec: FlinkDeploymentDef): IO[Throwable, Unit] = {
     lazy val mirrorSpace = s"${spec.namespace}_${spec.name}"
     for {
+      _                   <- ZIO.fail(FlinkDeploymentCRDNotFound()).unlessZIO(existFlinkDeploymentCRD)
       // Generate FlinkDeployment CR
       correctedJob        <- mirrorJobJarToHttpFileServer(spec.job, mirrorSpace)
       correctedExtJars    <- mirrorExtJarsToHttpFileServer(spec.extJarPaths, mirrorSpace)
-      correctedPod        <- correctPodSpec(
-                               spec.podTemplate,
-                               correctedExtJars ++ correctedJob.map(_.jarURI).filter(_.startsWith("http://")).toArray[String]
-                             )
+      correctedPod        <-
+        correctPodSpec(
+          spec.podTemplate,
+          correctedExtJars ++ correctedJob.map(_.jarURI).filter(_.startsWith(Constant.HTTP_SCHEMA)).toArray[String]
+        )
       correctedLocalUriJob = correctedJob.map { jobDef =>
-                               if (!jobDef.jarURI.startsWith("http://")) jobDef
+                               if (!jobDef.jarURI.startsWith(Constant.HTTP_SCHEMA)) jobDef
                                else jobDef.copy("local:///opt/flink/lib/" + pathLastSegment(jobDef.jarURI))
                              }
       correctedSpec        = spec.copy(
@@ -249,4 +255,12 @@ object CROperator extends CROperator {
         .delete()
     } *> ZIO.logInfo(s"Delete FlinkDeployment CR: namespace=$namespace, name=$name")
 
+  /** Check whether FlinkDeployment CRD is deployed in the k8s cluster. */
+  private def existFlinkDeploymentCRD: IO[Throwable, Boolean] = {
+    usingK8sClient { client =>
+      val crds          = client.apiextensions.v1.customResourceDefinitions.list
+      val deployCRDName = CustomResource.getCRDName(classOf[FlinkDeployment])
+      crds.getItems.asScala.exists(crd => crd.getMetadata.getName == deployCRDName)
+    }
+  }
 }

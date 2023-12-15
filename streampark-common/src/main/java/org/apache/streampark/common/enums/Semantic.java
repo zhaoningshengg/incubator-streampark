@@ -17,20 +17,25 @@
 
 package org.apache.streampark.common.enums;
 
-import java.io.Serializable;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
-public enum Semantic implements Serializable {
+/** Flink consistency semantics */
+public enum Semantic {
 
-  /** */
+  /**
+   * Ensure that the counting results obtained after a fault are consistent with the correct values.
+   */
   EXACTLY_ONCE,
 
-  /** */
+  /** The program may calculate more after a malfunction, but it will never calculate less. */
   AT_LEAST_ONCE,
 
-  /** */
+  /** After the fault occurs, the counting results may be lost. */
   NONE;
 
-  public static Semantic of(String name) {
+  @Nullable
+  public static Semantic of(@Nonnull String name) {
     for (Semantic semantic : Semantic.values()) {
       if (name.equals(semantic.name())) {
         return semantic;

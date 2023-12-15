@@ -27,7 +27,6 @@ import org.apache.flink.client.deployment.{DefaultClusterClientServiceLoader, St
 import org.apache.flink.client.program.{ClusterClient, PackagedProgram}
 import org.apache.flink.configuration._
 
-import java.io.File
 import java.lang.{Integer => JavaInt}
 
 import scala.util.{Failure, Success, Try}
@@ -35,27 +34,23 @@ import scala.util.{Failure, Success, Try}
 /** Submit Job to Remote Cluster */
 object RemoteClient extends FlinkClientTrait {
 
-  /**
-   * @param submitRequest
-   * @param flinkConfig
-   */
   override def setConfig(submitRequest: SubmitRequest, flinkConfig: Configuration): Unit = {}
 
   override def doSubmit(
       submitRequest: SubmitRequest,
       flinkConfig: Configuration): SubmitResponse = {
     //  submit job
-    super.trySubmit(submitRequest, flinkConfig, submitRequest.userJarFile)(restApiSubmit)(
-      jobGraphSubmit)
-
+    super.trySubmit(submitRequest, flinkConfig)(jobGraphSubmit, restApiSubmit)
   }
 
-  override def doCancel(request: CancelRequest, flinkConfig: Configuration): CancelResponse = {
+  override def doCancel(
+      cancelRequest: CancelRequest,
+      flinkConfig: Configuration): CancelResponse = {
     executeClientAction(
-      request,
+      cancelRequest,
       flinkConfig,
       (jobID, clusterClient) => {
-        CancelResponse(super.cancelJob(request, jobID, clusterClient))
+        CancelResponse(super.cancelJob(cancelRequest, jobID, clusterClient))
       })
   }
 
@@ -92,23 +87,20 @@ object RemoteClient extends FlinkClientTrait {
   }
 
   override def doTriggerSavepoint(
-      request: TriggerSavepointRequest,
+      savepointRequest: TriggerSavepointRequest,
       flinkConfig: Configuration): SavepointResponse = {
     executeClientAction(
-      request,
+      savepointRequest,
       flinkConfig,
       (jobID, clusterClient) => {
-        SavepointResponse(super.triggerSavepoint(request, jobID, clusterClient))
+        SavepointResponse(super.triggerSavepoint(savepointRequest, jobID, clusterClient))
       })
   }
 
   /** Submit flink session job via rest api. */
   // noinspection DuplicatedCode
   @throws[Exception]
-  def restApiSubmit(
-      submitRequest: SubmitRequest,
-      flinkConfig: Configuration,
-      fatJar: File): SubmitResponse = {
+  def restApiSubmit(submitRequest: SubmitRequest, flinkConfig: Configuration): SubmitResponse = {
     // retrieve standalone session cluster and submit flink job on session mode
     var clusterDescriptor: StandaloneClusterDescriptor = null;
     var client: ClusterClient[StandaloneClusterId] = null
@@ -119,7 +111,10 @@ object RemoteClient extends FlinkClientTrait {
 
       client = clusterDescriptor.retrieve(yarnClusterId).getClusterClient
       val jobId =
-        FlinkSessionSubmitHelper.submitViaRestApi(client.getWebInterfaceURL, fatJar, flinkConfig)
+        FlinkSessionSubmitHelper.submitViaRestApi(
+          client.getWebInterfaceURL,
+          submitRequest.userJarFile,
+          flinkConfig)
       logInfo(
         s"${submitRequest.executionMode} mode submit by restApi, WebInterfaceURL ${client.getWebInterfaceURL}, jobId: $jobId")
       SubmitResponse(null, flinkConfig.toMap, jobId, client.getWebInterfaceURL)
@@ -133,10 +128,7 @@ object RemoteClient extends FlinkClientTrait {
 
   /** Submit flink session job with building JobGraph via Standalone ClusterClient api. */
   @throws[Exception]
-  def jobGraphSubmit(
-      submitRequest: SubmitRequest,
-      flinkConfig: Configuration,
-      jarFile: File): SubmitResponse = {
+  def jobGraphSubmit(submitRequest: SubmitRequest, flinkConfig: Configuration): SubmitResponse = {
     var clusterDescriptor: StandaloneClusterDescriptor = null;
     var packageProgram: PackagedProgram = null
     var client: ClusterClient[StandaloneClusterId] = null
@@ -144,9 +136,9 @@ object RemoteClient extends FlinkClientTrait {
       val standAloneDescriptor = getStandAloneClusterDescriptor(flinkConfig)
       clusterDescriptor = standAloneDescriptor._2
       // build JobGraph
-      val packageProgramJobGraph = super.getJobGraph(flinkConfig, submitRequest, jarFile)
-      packageProgram = packageProgramJobGraph._1
-      val jobGraph = packageProgramJobGraph._2
+      val programJobGraph = super.getJobGraph(submitRequest, flinkConfig)
+      packageProgram = programJobGraph._1
+      val jobGraph = programJobGraph._2
       client = clusterDescriptor.retrieve(standAloneDescriptor._1).getClusterClient
       val jobId = client.submitJob(jobGraph).get().toString
       logInfo(

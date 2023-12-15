@@ -27,7 +27,7 @@ import org.apache.streampark.console.core.bean.AlertTemplate;
 import org.apache.streampark.console.core.bean.AlertWeComParams;
 import org.apache.streampark.console.core.bean.EmailConfig;
 import org.apache.streampark.console.core.entity.Application;
-import org.apache.streampark.console.core.enums.FlinkAppState;
+import org.apache.streampark.console.core.enums.FlinkAppStateEnum;
 import org.apache.streampark.console.core.service.alert.impl.DingTalkAlertNotifyServiceImpl;
 import org.apache.streampark.console.core.service.alert.impl.LarkAlertNotifyServiceImpl;
 import org.apache.streampark.console.core.service.alert.impl.WeComAlertNotifyServiceImpl;
@@ -117,7 +117,6 @@ class AlertServiceTest {
   void testDingTalkAlert() throws Exception {
     DingTalkAlertNotifyServiceImpl notifyService = new DingTalkAlertNotifyServiceImpl(restTemplate);
 
-    notifyService.loadTemplateFile();
     AlertDingTalkParams dingTalkParams = new AlertDingTalkParams();
     dingTalkParams.setToken("your_token");
     dingTalkParams.setContacts("175xxxx1234");
@@ -132,7 +131,6 @@ class AlertServiceTest {
   @Test
   void testWeComAlert() throws Exception {
     WeComAlertNotifyServiceImpl notifyService = new WeComAlertNotifyServiceImpl(restTemplate);
-    notifyService.loadTemplateFile();
 
     AlertWeComParams weComParams = new AlertWeComParams();
     weComParams.setToken("your_token");
@@ -146,7 +144,6 @@ class AlertServiceTest {
   @Test
   void testLarkAlert() {
     LarkAlertNotifyServiceImpl notifyService = new LarkAlertNotifyServiceImpl(restTemplate, mapper);
-    notifyService.loadTemplateFile();
 
     AlertLarkParams alertLarkParams = new AlertLarkParams();
     alertLarkParams.setToken("your_token");
@@ -163,7 +160,7 @@ class AlertServiceTest {
     application.setStartTime(new Date());
     application.setJobName("Test My Job");
     application.setAppId("1234567890");
-    application.setAlertId(1);
+    application.setAlertId(1L);
 
     application.setRestartCount(5);
     application.setRestartSize(100);
@@ -172,7 +169,7 @@ class AlertServiceTest {
     application.setCpFailureRateInterval(30);
     application.setCpMaxFailureInterval(5);
 
-    FlinkAppState appState = FlinkAppState.FAILED;
+    FlinkAppStateEnum appState = FlinkAppStateEnum.FAILED;
 
     try {
       AlertTemplate mail = getAlertBaseInfo(application);
@@ -193,7 +190,7 @@ class AlertServiceTest {
           String.format("StreamPark Alert: %s %s", application.getJobName(), appState.name());
       sendEmail(subject, html, "****@domain.com");
     } catch (Exception e) {
-      e.printStackTrace();
+      log.error("Failed to send email alert", e);
     }
   }
 

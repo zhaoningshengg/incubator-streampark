@@ -33,6 +33,7 @@ import lombok.Data;
 
 import java.io.File;
 import java.io.Serializable;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.Map;
 
@@ -73,7 +74,7 @@ public class FlinkEnv implements Serializable {
   public void doSetFlinkConf() throws ApiDetailException {
     try {
       File yaml = new File(this.flinkHome.concat("/conf/flink-conf.yaml"));
-      String flinkConf = FileUtils.readFileToString(yaml);
+      String flinkConf = FileUtils.readFileToString(yaml, StandardCharsets.UTF_8);
       this.flinkConf = DeflaterUtils.zipString(flinkConf);
     } catch (Exception e) {
       throw new ApiDetailException(e);
@@ -109,28 +110,28 @@ public class FlinkEnv implements Serializable {
   }
 
   public String getLargeVersion() {
-    if (StringUtils.isNotEmpty(this.version)) {
+    if (StringUtils.isNotBlank(this.version)) {
       return this.version.substring(0, this.version.lastIndexOf("."));
     }
     return null;
   }
 
   public String getVersionOfFirst() {
-    if (StringUtils.isNotEmpty(this.version)) {
+    if (StringUtils.isNotBlank(this.version)) {
       return this.version.split("\\.")[0];
     }
     return null;
   }
 
   public String getVersionOfMiddle() {
-    if (StringUtils.isNotEmpty(this.version)) {
+    if (StringUtils.isNotBlank(this.version)) {
       return this.version.split("\\.")[1];
     }
     return null;
   }
 
   public String getVersionOfLast() {
-    if (StringUtils.isNotEmpty(this.version)) {
+    if (StringUtils.isNotBlank(this.version)) {
       return this.version.split("\\.")[2];
     }
     return null;

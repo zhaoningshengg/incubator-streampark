@@ -17,22 +17,27 @@
 
 package org.apache.streampark.common.enums;
 
-import java.io.Serializable;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
-public enum ApplicationType implements Serializable {
+public enum ApplicationType {
+
   /** StreamPark Flink */
   STREAMPARK_FLINK(1, "StreamPark Flink"),
+
   /** Apache Flink */
   APACHE_FLINK(2, "Apache Flink"),
+
   /** StreamPark Spark */
   STREAMPARK_SPARK(3, "StreamPark Spark"),
+
   /** Apache Spark */
   APACHE_SPARK(4, "Apache Spark");
 
   private final int type;
   private final String name;
 
-  ApplicationType(int type, String name) {
+  ApplicationType(int type, @Nonnull String name) {
     this.type = type;
     this.name = name;
   }
@@ -41,10 +46,13 @@ public enum ApplicationType implements Serializable {
     return type;
   }
 
+  @Nonnull
   public String getName() {
     return name;
   }
 
+  /** switch param use this, can't be null */
+  @Nullable
   public static ApplicationType of(int type) {
     for (ApplicationType appType : ApplicationType.values()) {
       if (appType.getType() == type) {

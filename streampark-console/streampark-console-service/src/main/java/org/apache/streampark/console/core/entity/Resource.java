@@ -17,8 +17,10 @@
 
 package org.apache.streampark.console.core.entity;
 
-import org.apache.streampark.console.core.enums.EngineType;
-import org.apache.streampark.console.core.enums.ResourceType;
+import org.apache.streampark.console.core.enums.EngineTypeEnum;
+import org.apache.streampark.console.core.enums.ResourceTypeEnum;
+
+import org.apache.commons.lang3.StringUtils;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -54,9 +56,9 @@ public class Resource implements Serializable {
   /** user id of creator */
   private Long creatorId;
 
-  private ResourceType resourceType;
+  private ResourceTypeEnum resourceType;
 
-  private EngineType engineType;
+  private EngineTypeEnum engineType;
 
   // for flink app
   private String mainClass;
@@ -84,7 +86,7 @@ public class Resource implements Serializable {
   private transient String connector;
 
   public void setResourcePath(String resourcePath) {
-    if (resourcePath == null) {
+    if (StringUtils.isBlank(resourcePath)) {
       throw new IllegalArgumentException("resource path cannot be null.");
     }
     String[] namePath = resourcePath.split(":");
@@ -95,14 +97,14 @@ public class Resource implements Serializable {
   }
 
   public String getFileName() {
-    if (this.resourcePath == null) {
+    if (StringUtils.isBlank(this.resourcePath)) {
       return null;
     }
     return resourcePath.split(":")[0];
   }
 
   public String getFilePath() {
-    if (this.resourcePath == null) {
+    if (StringUtils.isBlank(this.resourcePath)) {
       return null;
     }
     return resourcePath.split(":")[1];

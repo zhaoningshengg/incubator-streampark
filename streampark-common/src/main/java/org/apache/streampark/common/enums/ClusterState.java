@@ -17,54 +17,71 @@
 
 package org.apache.streampark.common.enums;
 
-import java.io.Serializable;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
-/** @since: 1.2.3 */
-public enum ClusterState implements Serializable {
+/** @since 1.2.3 */
+public enum ClusterState {
+
   /** The cluster was just created but not started */
   CREATED(0),
+
   /** cluster started */
   RUNNING(1),
+
   /** cluster stopped */
   CANCELED(2),
+
   /** cluster lost */
   LOST(3),
+
   /** cluster unknown */
   UNKNOWN(4),
+
+  /** cluster starting */
   STARTING(5),
+
+  /** cluster cancelling */
   CANCELLING(6),
+
+  /** cluster failed */
   FAILED(7),
+
+  /** cluster killed */
   KILLED(8);
 
-  private final Integer value;
+  private final Integer state;
 
-  ClusterState(Integer value) {
-    this.value = value;
+  ClusterState(@Nonnull Integer state) {
+    this.state = state;
   }
 
-  public static ClusterState of(Integer value) {
+  @Nonnull
+  public static ClusterState of(@Nullable Integer value) {
     for (ClusterState clusterState : values()) {
-      if (clusterState.value.equals(value)) {
+      if (clusterState.state.equals(value)) {
         return clusterState;
       }
     }
     return ClusterState.UNKNOWN;
   }
 
-  public static ClusterState of(String value) {
+  @Nonnull
+  public static ClusterState of(@Nullable String name) {
     for (ClusterState clusterState : values()) {
-      if (clusterState.name().equals(value)) {
+      if (clusterState.name().equals(name)) {
         return clusterState;
       }
     }
     return ClusterState.UNKNOWN;
   }
 
-  public Integer getValue() {
-    return value;
+  @Nonnull
+  public Integer getState() {
+    return state;
   }
 
-  public static boolean isRunning(ClusterState state) {
+  public static boolean isRunning(@Nullable ClusterState state) {
     return RUNNING.equals(state);
   }
 }

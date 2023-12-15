@@ -37,7 +37,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.client.RestTemplate;
 
-import javax.annotation.PostConstruct;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 
@@ -55,18 +54,12 @@ import java.util.StringJoiner;
 @Service
 @Lazy
 public class DingTalkAlertNotifyServiceImpl implements AlertNotifyService {
-  private Template template;
+  private final Template template = FreemarkerUtils.loadTemplateFile("alert-dingTalk.ftl");
 
   private final RestTemplate alertRestTemplate;
 
   public DingTalkAlertNotifyServiceImpl(RestTemplate alertRestTemplate) {
     this.alertRestTemplate = alertRestTemplate;
-  }
-
-  @PostConstruct
-  public void loadTemplateFile() throws Exception {
-    String template = "alert-dingTalk.ftl";
-    this.template = FreemarkerUtils.loadTemplateFile(template);
   }
 
   @Override
@@ -81,7 +74,7 @@ public class DingTalkAlertNotifyServiceImpl implements AlertNotifyService {
         Collections.addAll(contactList, contacts.split(","));
       }
       String title = alertTemplate.getTitle();
-      if (contactList.size() > 0) {
+      if (!contactList.isEmpty()) {
         StringJoiner joiner = new StringJoiner(",@", title + " @", "");
         contactList.forEach(joiner::add);
         title = joiner.toString();
@@ -125,16 +118,16 @@ public class DingTalkAlertNotifyServiceImpl implements AlertNotifyService {
     } catch (Exception e) {
       log.error("Failed to request DingTalk robot alarm,\nurl:{}", url, e);
       throw new AlertException(
-          String.format("Failed to request DingTalk robot alert,\nurl:%s", url), e);
+          String.format("Failed to request DingTalk robot alert,%nurl:%s", url), e);
     }
     if (robotResponse == null) {
       throw new AlertException(
-          String.format("Failed to request DingTalk robot alert,\nurl:%s", url));
+          String.format("Failed to request DingTalk robot alert,%nurl:%s", url));
     }
     if (robotResponse.getErrcode() != 0) {
       throw new AlertException(
           String.format(
-              "Failed to request DingTalk robot alert,\nurl:%s,\nerrorCode:%d,\nerrorMsg:%s",
+              "Failed to request DingTalk robot alert,%nurl:%s,%nerrorCode:%d,%nerrorMsg:%s",
               url, robotResponse.getErrcode(), robotResponse.getErrmsg()));
     }
   }

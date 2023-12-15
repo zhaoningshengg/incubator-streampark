@@ -19,7 +19,7 @@ package org.apache.streampark.console.core.service;
 
 import org.apache.streampark.console.core.entity.AppBuildPipeline;
 import org.apache.streampark.flink.packer.pipeline.DockerResolvedSnapshot;
-import org.apache.streampark.flink.packer.pipeline.PipelineStatus;
+import org.apache.streampark.flink.packer.pipeline.PipelineStatusEnum;
 
 import com.baomidou.mybatisplus.extension.service.IService;
 
@@ -55,12 +55,12 @@ public interface AppBuildPipeService extends IService<AppBuildPipeline> {
   boolean allowToBuildNow(@Nonnull Long appId);
 
   /** list pipeline status on application id list */
-  Map<Long, PipelineStatus> listPipelineStatus(List<Long> appIds);
+  Map<Long, PipelineStatusEnum> listAppIdPipelineStatusMap(List<Long> appIds);
 
   /**
    * delete appBuildPipeline By application
    *
    * @param appId
    */
-  void removeApp(Long appId);
+  void removeByAppId(Long appId);
 }

@@ -57,6 +57,7 @@ create table if not exists `t_flink_app` (
   `job_manager_url` varchar(255)  default null,
   `version_id` bigint default null,
   `cluster_id` varchar(45)  default null,
+  `k8s_name` varchar(63)  default null,
   `k8s_namespace` varchar(63)  default null,
   `flink_image` varchar(128)  default null,
   `state` int default null,
@@ -79,7 +80,7 @@ create table if not exists `t_flink_app` (
   `option_state` tinyint default null,
   `tracking` tinyint default null,
   `create_time` datetime not null default current_timestamp comment 'create time',
-  `modify_time` datetime not null default current_timestamp on update current_timestamp comment 'modify time',
+  `modify_time` datetime not null default current_timestamp comment 'modify time',
   `option_time` datetime default null,
   `release` tinyint default 1,
   `build` tinyint default 1,
@@ -94,6 +95,7 @@ create table if not exists `t_flink_app` (
   `ingress_template` text ,
   `default_mode_ingress` text ,
   `tags` varchar(500) default null,
+  `probing` tinyint default 0,
   primary key(`id`)
 );
 
@@ -153,6 +155,7 @@ create table if not exists `t_flink_log` (
   `exception` text ,
   `option_time` datetime default null,
   `option_name` tinyint default null,
+  `user_id` bigint default null comment 'operator user id',
   primary key(`id`)
 );
 

@@ -17,9 +17,9 @@
 
 package org.apache.streampark.console.system.entity;
 
-import org.apache.streampark.common.conf.ConfigConst;
-import org.apache.streampark.console.core.enums.LoginType;
-import org.apache.streampark.console.core.enums.UserType;
+import org.apache.streampark.common.Constant;
+import org.apache.streampark.console.core.enums.LoginTypeEnum;
+import org.apache.streampark.console.core.enums.UserTypeEnum;
 
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
@@ -63,9 +63,9 @@ public class User implements Serializable {
   @Email(message = "{email}")
   private String email;
 
-  private UserType userType;
+  private UserTypeEnum userType;
 
-  private LoginType loginType;
+  private LoginTypeEnum loginType;
 
   @NotBlank(message = "{required}")
   private String status;
@@ -101,7 +101,7 @@ public class User implements Serializable {
   private Long lastTeamId;
 
   public void dataMasking() {
-    String dataMask = ConfigConst.DEFAULT_DATAMASK_STRING();
+    String dataMask = Constant.DEFAULT_DATAMASK_STRING;
     this.setPassword(dataMask);
     this.setSalt(dataMask);
   }

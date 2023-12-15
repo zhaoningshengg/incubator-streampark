@@ -17,9 +17,9 @@
 
 package org.apache.streampark.console.core.entity;
 
-import org.apache.streampark.common.conf.ConfigConst;
+import org.apache.streampark.common.conf.ConfigKeys;
 import org.apache.streampark.common.enums.ClusterState;
-import org.apache.streampark.common.enums.ExecutionMode;
+import org.apache.streampark.common.enums.FlinkExecutionMode;
 import org.apache.streampark.common.enums.FlinkK8sRestExposedType;
 import org.apache.streampark.common.enums.ResolveOrder;
 import org.apache.streampark.common.util.HttpClientUtils;
@@ -36,6 +36,7 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.baomidou.mybatisplus.core.toolkit.support.SFunction;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -110,7 +111,7 @@ public class FlinkCluster implements Serializable {
   private Date endTime;
 
   @TableField(updateStrategy = FieldStrategy.IGNORED)
-  private Integer alertId;
+  private Long alertId;
 
   private transient Integer allJobs = 0;
 
@@ -121,8 +122,8 @@ public class FlinkCluster implements Serializable {
     return FlinkK8sRestExposedType.of(this.k8sRestExposedType);
   }
 
-  public ExecutionMode getExecutionModeEnum() {
-    return ExecutionMode.of(this.executionMode);
+  public FlinkExecutionMode getFlinkExecutionModeEnum() {
+    return FlinkExecutionMode.of(this.executionMode);
   }
 
   public ClusterState getClusterStateEnum() {
@@ -135,13 +136,13 @@ public class FlinkCluster implements Serializable {
     if (StringUtils.isBlank(this.options)) {
       return Collections.emptyMap();
     }
-    Map<String, Object> map = JacksonUtils.read(this.options, Map.class);
-    if (ExecutionMode.YARN_SESSION.equals(getExecutionModeEnum())) {
-      map.put(ConfigConst.KEY_YARN_APP_NAME(), this.clusterName);
-      map.putAll(YarnQueueLabelExpression.getQueueLabelMap(yarnQueue));
+    Map<String, Object> optionMap = JacksonUtils.read(this.options, Map.class);
+    if (FlinkExecutionMode.YARN_SESSION == getFlinkExecutionModeEnum()) {
+      optionMap.put(ConfigKeys.KEY_YARN_APP_NAME(), this.clusterName);
+      optionMap.putAll(YarnQueueLabelExpression.getQueueLabelMap(yarnQueue));
     }
-    map.entrySet().removeIf(entry -> entry.getValue() == null);
-    return map;
+    optionMap.entrySet().removeIf(entry -> entry.getValue() == null);
+    return optionMap;
   }
 
   @JsonIgnore
@@ -163,7 +164,7 @@ public class FlinkCluster implements Serializable {
     String json =
         HttpClientUtils.httpGetRequest(
             restUrl, RequestConfig.custom().setConnectTimeout(2000, TimeUnit.MILLISECONDS).build());
-    if (StringUtils.isEmpty(json)) {
+    if (StringUtils.isBlank(json)) {
       return Collections.emptyMap();
     }
     List<Map<String, String>> confList =
@@ -175,15 +176,27 @@ public class FlinkCluster implements Serializable {
 
   @JsonIgnore
   public Map<String, Object> getProperties() {
-    Map<String, Object> map = new HashMap<>();
-    Map<String, String> dynamicProperties =
+    Map<String, Object> propertyMap = new HashMap<>();
+    Map<String, String> dynamicPropertyMap =
         PropertiesUtils.extractDynamicPropertiesAsJava(this.getDynamicProperties());
-    map.putAll(this.getOptionMap());
-    map.putAll(dynamicProperties);
+    propertyMap.putAll(this.getOptionMap());
+    propertyMap.putAll(dynamicPropertyMap);
     ResolveOrder resolveOrder = ResolveOrder.of(this.getResolveOrder());
     if (resolveOrder != null) {
-      map.put(CoreOptions.CLASSLOADER_RESOLVE_ORDER.key(), resolveOrder.getName());
+      propertyMap.put(CoreOptions.CLASSLOADER_RESOLVE_ORDER.key(), resolveOrder.getName());
     }
-    return map;
+    return propertyMap;
+  }
+
+  public static class SFunc {
+    public static final SFunction<FlinkCluster, Long> ID = FlinkCluster::getId;
+    public static final SFunction<FlinkCluster, String> ADDRESS = FlinkCluster::getAddress;
+    public static final SFunction<FlinkCluster, String> JOB_MANAGER_URL =
+        FlinkCluster::getJobManagerUrl;
+    public static final SFunction<FlinkCluster, Integer> CLUSTER_STATE =
+        FlinkCluster::getClusterState;
+    public static final SFunction<FlinkCluster, Integer> EXECUTION_MODE =
+        FlinkCluster::getExecutionMode;
+    public static final SFunction<FlinkCluster, String> EXCEPTION = FlinkCluster::getException;
   }
 }

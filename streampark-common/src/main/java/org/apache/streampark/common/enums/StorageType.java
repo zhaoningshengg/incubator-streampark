@@ -19,9 +19,10 @@ package org.apache.streampark.common.enums;
 
 import org.apache.commons.lang3.StringUtils;
 
-import java.io.Serializable;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
-public enum StorageType implements Serializable {
+public enum StorageType {
 
   /** hdfs */
   HDFS("hdfs"),
@@ -29,22 +30,24 @@ public enum StorageType implements Serializable {
   /** local File system */
   LFS("lfs");
 
-  private final String identifier;
+  private final String type;
 
-  StorageType(String identifier) {
-    this.identifier = identifier;
+  StorageType(@Nonnull String type) {
+    this.type = type;
   }
 
-  public String getIdentifier() {
-    return identifier;
+  @Nonnull
+  public String getType() {
+    return type;
   }
 
-  public static StorageType of(String identifier) {
-    if (StringUtils.isEmpty(identifier)) {
+  @Nonnull
+  public static StorageType of(@Nullable String identifier) {
+    if (StringUtils.isBlank(identifier)) {
       return LFS;
     }
     for (StorageType type : values()) {
-      if (type.identifier.equals(identifier)) {
+      if (type.type.equals(identifier)) {
         return type;
       }
     }

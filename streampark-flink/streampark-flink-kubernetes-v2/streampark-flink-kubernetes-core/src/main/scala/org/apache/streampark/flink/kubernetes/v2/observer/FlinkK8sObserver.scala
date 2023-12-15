@@ -23,13 +23,13 @@ import org.apache.streampark.flink.kubernetes.v2.model._
 import org.apache.streampark.flink.kubernetes.v2.model.TrackKey._
 
 import org.apache.flink.v1beta1.{FlinkDeployment, FlinkDeploymentSpec, FlinkSessionJob, FlinkSessionJobSpec}
-import zio.{IO, Ref, Schedule, UIO}
+import zio.{IO, Ref, Schedule, UIO, ZIO}
 import zio.ZIO.logInfo
 import zio.concurrent.{ConcurrentMap, ConcurrentSet}
-import zio.stream.ZStream
+import zio.stream.{UStream, ZStream}
 
 /** Flink Kubernetes resource observer. */
-sealed trait FlinkK8sObserver {
+sealed trait FlinkK8sObserverTrait {
 
   /** Start tracking resources. */
   def track(key: TrackKey): UIO[Unit]
@@ -88,7 +88,7 @@ sealed trait FlinkK8sObserver {
 
 }
 
-object FlinkK8sObserver extends FlinkK8sObserver {
+object FlinkK8sObserver extends FlinkK8sObserverTrait {
 
   // The following is a visible external snapshot.
   val trackedKeys          = ConcurrentSet.empty[TrackKey].runUIO
@@ -278,6 +278,51 @@ object FlinkK8sObserver extends FlinkK8sObserver {
           .get()
       ).map(_.getSpec)
     }
+  }
+
+}
+
+object FlinkK8sObserverSnapSubscriptionHelper {
+
+  implicit class ClusterMetricsSnapsSubscriptionOps(stream: UStream[((Namespace, Name), ClusterMetrics)]) {
+    def combineWithTrackKey: UStream[Option[(TrackKey, ClusterMetrics)]] =
+      combineValueWithTrackKey[ClusterMetrics](stream)
+
+    def combineWithTypedTrackKey[Key <: TrackKey]: UStream[Option[(Key, ClusterMetrics)]] =
+      combineValueWithTypedTrackKey[Key, ClusterMetrics](stream)
+  }
+
+  implicit class RestSvcEndpointSnapsSubscriptionOps(stream: UStream[((Namespace, Name), RestSvcEndpoint)]) {
+    def combineWithTrackKey: UStream[Option[(TrackKey, RestSvcEndpoint)]] =
+      combineValueWithTrackKey[RestSvcEndpoint](stream)
+
+    def combineWithTypedTrackKey[Key <: TrackKey]: UStream[Option[(Key, RestSvcEndpoint)]] =
+      combineValueWithTypedTrackKey[Key, RestSvcEndpoint](stream)
+  }
+
+  implicit class DeployCRSnapsSubscriptionOps(
+      stream: UStream[((Namespace, Name), (DeployCRStatus, Option[JobStatus]))]) {
+    def combineWithTrackKey: UStream[Option[(TrackKey, (DeployCRStatus, Option[JobStatus]))]] =
+      combineValueWithTrackKey[(DeployCRStatus, Option[JobStatus])](stream)
+
+    def combineWithTypedTrackKey[Key <: TrackKey]: UStream[Option[(Key, (DeployCRStatus, Option[JobStatus]))]] =
+      combineValueWithTypedTrackKey[Key, (DeployCRStatus, Option[JobStatus])](stream)
+  }
+
+  private[this] def combineValueWithTrackKey[Value](
+      stream: UStream[((Namespace, Name), Value)]): UStream[Option[(TrackKey, Value)]] = stream.mapZIO {
+    case ((namespace, name), value) =>
+      FlinkK8sObserver.trackedKeys
+        .find(key => key.clusterNamespace == namespace && key.clusterName == name)
+        .map(key => key.map(_ -> value))
+  }
+
+  private[this] def combineValueWithTypedTrackKey[Key <: TrackKey, Value](
+      stream: UStream[((Namespace, Name), Value)]): UStream[Option[(Key, Value)]] = stream.mapZIO {
+    case ((namespace, name), value) =>
+      FlinkK8sObserver.trackedKeys
+        .find(key => key.isInstanceOf[Key] && key.clusterNamespace == namespace && key.clusterName == name)
+        .map(key => key.map(_.asInstanceOf[Key] -> value))
   }
 
 }

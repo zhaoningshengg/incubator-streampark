@@ -20,15 +20,15 @@ package org.apache.streampark.console.core.service.impl;
 import org.apache.streampark.common.util.Utils;
 import org.apache.streampark.console.core.entity.Application;
 import org.apache.streampark.console.core.entity.ExternalLink;
-import org.apache.streampark.console.core.enums.PlaceholderType;
+import org.apache.streampark.console.core.enums.PlaceholderTypeEnum;
 import org.apache.streampark.console.core.mapper.ExternalLinkMapper;
-import org.apache.streampark.console.core.service.ApplicationService;
 import org.apache.streampark.console.core.service.ExternalLinkService;
+import org.apache.streampark.console.core.service.application.ApplicationManageService;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,14 +37,16 @@ import org.springframework.util.PropertyPlaceholderHelper;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 @Slf4j
 @Service
+@RequiredArgsConstructor
 @Transactional(propagation = Propagation.SUPPORTS, readOnly = true, rollbackFor = Exception.class)
 public class ExternalLinkServiceImpl extends ServiceImpl<ExternalLinkMapper, ExternalLink>
     implements ExternalLinkService {
 
-  @Autowired private ApplicationService applicationService;
+  private final ApplicationManageService applicationManageService;
 
   @Override
   public void create(ExternalLink externalLink) {
@@ -67,13 +69,13 @@ public class ExternalLinkServiceImpl extends ServiceImpl<ExternalLinkMapper, Ext
   }
 
   @Override
-  public void delete(Long linkId) {
+  public void removeById(Long linkId) {
     baseMapper.deleteById(linkId);
   }
 
   @Override
   public List<ExternalLink> render(Long appId) {
-    Application app = applicationService.getById(appId);
+    Application app = applicationManageService.getById(appId);
     Utils.notNull(app, "Application doesn't exist");
     List<ExternalLink> externalLink = this.list();
     if (externalLink != null && externalLink.size() > 0) {
@@ -84,13 +86,14 @@ public class ExternalLinkServiceImpl extends ServiceImpl<ExternalLinkMapper, Ext
   }
 
   private void renderLinkUrl(ExternalLink link, Application app) {
-    HashMap<String, String> map = new HashMap();
-    map.put(PlaceholderType.JOB_ID.get(), app.getJobId());
-    map.put(PlaceholderType.JOB_NAME.get(), app.getJobName());
-    map.put(PlaceholderType.YARN_ID.get(), app.getAppId());
+    Map<String, String> placeholderValueMap = new HashMap<>();
+    placeholderValueMap.put(PlaceholderTypeEnum.JOB_ID.get(), app.getJobId());
+    placeholderValueMap.put(PlaceholderTypeEnum.JOB_NAME.get(), app.getJobName());
+    placeholderValueMap.put(PlaceholderTypeEnum.YARN_ID.get(), app.getAppId());
     PropertyPlaceholderHelper propertyPlaceholderHelper = new PropertyPlaceholderHelper("{", "}");
     link.setRenderedLinkUrl(
-        propertyPlaceholderHelper.replacePlaceholders(link.getLinkUrl().trim(), map::get));
+        propertyPlaceholderHelper.replacePlaceholders(
+            link.getLinkUrl().trim(), placeholderValueMap::get));
   }
 
   private boolean check(ExternalLink params) {

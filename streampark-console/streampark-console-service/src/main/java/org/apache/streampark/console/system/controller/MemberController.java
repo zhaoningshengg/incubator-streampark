@@ -20,7 +20,7 @@ package org.apache.streampark.console.system.controller;
 import org.apache.streampark.console.base.domain.RestRequest;
 import org.apache.streampark.console.base.domain.RestResponse;
 import org.apache.streampark.console.core.annotation.PermissionAction;
-import org.apache.streampark.console.core.enums.PermissionType;
+import org.apache.streampark.console.core.enums.PermissionTypeEnum;
 import org.apache.streampark.console.system.entity.Member;
 import org.apache.streampark.console.system.entity.Team;
 import org.apache.streampark.console.system.entity.User;
@@ -57,33 +57,33 @@ public class MemberController {
   @Operation(summary = "List members")
   @PostMapping("list")
   public RestResponse memberList(RestRequest restRequest, Member member) {
-    IPage<Member> userList = memberService.findUsers(member, restRequest);
+    IPage<Member> userList = memberService.getPage(member, restRequest);
     return RestResponse.success(userList);
   }
 
   @Operation(summary = "List candidate users")
   @PostMapping("candidateUsers")
   public RestResponse candidateUsers(Long teamId) {
-    List<User> userList = memberService.findCandidateUsers(teamId);
+    List<User> userList = memberService.listUsersNotInTeam(teamId);
     return RestResponse.success(userList);
   }
 
   @Operation(summary = "List teams")
   @PostMapping("teams")
   public RestResponse listTeams(Long userId) {
-    List<Team> teamList = memberService.findUserTeams(userId);
+    List<Team> teamList = memberService.listTeamsByUserId(userId);
     return RestResponse.success(teamList);
   }
 
   @Operation(summary = "Check the username")
   @PostMapping("check/user")
   public RestResponse check(@NotBlank(message = "{required}") Long teamId, String userName) {
-    Member result = this.memberService.findByUserName(teamId, userName);
+    Member result = this.memberService.getByTeamIdUserName(teamId, userName);
     return RestResponse.success(result == null);
   }
 
   @Operation(summary = "Create member")
-  @PermissionAction(id = "#member.teamId", type = PermissionType.TEAM)
+  @PermissionAction(id = "#member.teamId", type = PermissionTypeEnum.TEAM)
   @PostMapping("post")
   @RequiresPermissions("member:add")
   public RestResponse create(@Valid Member member) {
@@ -92,16 +92,16 @@ public class MemberController {
   }
 
   @Operation(summary = "Delete member")
-  @PermissionAction(id = "#member.teamId", type = PermissionType.TEAM)
+  @PermissionAction(id = "#member.teamId", type = PermissionTypeEnum.TEAM)
   @DeleteMapping("delete")
   @RequiresPermissions("member:delete")
   public RestResponse delete(Member member) {
-    this.memberService.deleteMember(member);
+    this.memberService.remove(member);
     return RestResponse.success();
   }
 
   @Operation(summary = "Update member")
-  @PermissionAction(id = "#member.teamId", type = PermissionType.TEAM)
+  @PermissionAction(id = "#member.teamId", type = PermissionTypeEnum.TEAM)
   @PutMapping("update")
   @RequiresPermissions("member:update")
   public RestResponse update(Member member) {

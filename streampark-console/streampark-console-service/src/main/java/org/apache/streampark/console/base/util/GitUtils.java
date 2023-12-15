@@ -17,9 +17,12 @@
 
 package org.apache.streampark.console.base.util;
 
+import org.apache.streampark.common.util.FileUtils;
+import org.apache.streampark.common.util.SystemPropertyUtils;
 import org.apache.streampark.console.core.entity.Project;
-import org.apache.streampark.console.core.enums.GitCredential;
+import org.apache.streampark.console.core.enums.GitCredentialEnum;
 
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
 import com.jcraft.jsch.JSch;
@@ -52,7 +55,7 @@ public class GitUtils {
     CloneCommand cloneCommand =
         Git.cloneRepository().setURI(project.getUrl()).setDirectory(project.getAppSource());
 
-    if (project.getBranches() != null) {
+    if (StringUtils.isNotBlank(project.getBranches())) {
       cloneCommand.setBranch(Constants.R_HEADS + project.getBranches());
       cloneCommand.setBranchesToClone(
           Collections.singletonList(Constants.R_HEADS + project.getBranches()));
@@ -66,6 +69,9 @@ public class GitUtils {
     setCredentials(command, project);
     Collection<Ref> refList = command.call();
     List<String> branchList = new ArrayList<>(4);
+    if (CollectionUtils.isEmpty(refList)) {
+      return branchList;
+    }
     for (Ref ref : refList) {
       String refName = ref.getName();
       if (refName.startsWith(Constants.R_HEADS)) {
@@ -77,10 +83,10 @@ public class GitUtils {
   }
 
   private static void setCredentials(TransportCommand<?, ?> transportCommand, Project project) {
-    GitCredential gitCredential = GitCredential.of(project.getGitCredential());
-    switch (gitCredential) {
+    GitCredentialEnum gitCredentialEnum = GitCredentialEnum.of(project.getGitCredential());
+    switch (gitCredentialEnum) {
       case HTTPS:
-        if (!StringUtils.isAllEmpty(project.getUserName(), project.getPassword())) {
+        if (!StringUtils.isAllBlank(project.getUserName(), project.getPassword())) {
           UsernamePasswordCredentialsProvider credentialsProvider =
               new UsernamePasswordCredentialsProvider(project.getUserName(), project.getPassword());
           transportCommand.setCredentialsProvider(credentialsProvider);
@@ -100,13 +106,23 @@ public class GitUtils {
                     @Override
                     protected JSch createDefaultJSch(FS fs) throws JSchException {
                       JSch jSch = super.createDefaultJSch(fs);
-                      if (project.getPrvkeyPath() == null) {
+                      String prvkeyPath = project.getPrvkeyPath();
+                      if (StringUtils.isBlank(prvkeyPath)) {
+                        String userHome = SystemPropertyUtils.getUserHome();
+                        if (userHome != null) {
+                          String rsaPath = userHome.concat("/.ssh/id_rsa");
+                          if (FileUtils.exists(rsaPath)) {
+                            prvkeyPath = rsaPath;
+                          }
+                        }
+                      }
+                      if (prvkeyPath == null) {
                         return jSch;
                       }
-                      if (StringUtils.isEmpty(project.getPassword())) {
-                        jSch.addIdentity(project.getPrvkeyPath());
+                      if (StringUtils.isBlank(project.getPassword())) {
+                        jSch.addIdentity(prvkeyPath);
                       } else {
-                        jSch.addIdentity(project.getPrvkeyPath(), project.getPassword());
+                        jSch.addIdentity(prvkeyPath, project.getPassword());
                       }
                       return jSch;
                     }

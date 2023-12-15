@@ -21,11 +21,11 @@ import org.apache.streampark.common.conf.CommonConfig;
 import org.apache.streampark.common.conf.InternalConfigHolder;
 import org.apache.streampark.common.conf.Workspace;
 import org.apache.streampark.common.util.CommandUtils;
+import org.apache.streampark.common.util.Utils;
 import org.apache.streampark.console.base.exception.ApiDetailException;
-import org.apache.streampark.console.base.util.CommonUtils;
 import org.apache.streampark.console.base.util.GitUtils;
 import org.apache.streampark.console.base.util.WebUtils;
-import org.apache.streampark.console.core.enums.GitAuthorizedError;
+import org.apache.streampark.console.core.enums.GitAuthorizedErrorEnum;
 
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -43,8 +43,10 @@ import org.eclipse.jgit.lib.Constants;
 import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @Slf4j
 @Data
@@ -108,7 +110,7 @@ public class Project implements Serializable {
   /** get project source */
   @JsonIgnore
   public File getAppSource() {
-    if (appSource == null) {
+    if (StringUtils.isBlank(appSource)) {
       appSource = Workspace.PROJECT_LOCAL_PATH();
     }
     File sourcePath = new File(appSource);
@@ -118,7 +120,7 @@ public class Project implements Serializable {
     if (sourcePath.isFile()) {
       throw new IllegalArgumentException("[StreamPark] sourcePath must be directory");
     }
-    String branches = this.getBranches() == null ? "main" : this.getBranches();
+    String branches = StringUtils.isBlank(this.getBranches()) ? "main" : this.getBranches();
     String rootName = url.replaceAll(".*/|\\.git|\\.svn", "");
     String fullName = rootName.concat("-").concat(branches);
     String path = String.format("%s/%s/%s", sourcePath.getAbsolutePath(), getName(), fullName);
@@ -150,18 +152,18 @@ public class Project implements Serializable {
     }
   }
 
-  public GitAuthorizedError gitCheck() {
+  public GitAuthorizedErrorEnum gitCheck() {
     try {
       GitUtils.getBranchList(this);
-      return GitAuthorizedError.SUCCESS;
+      return GitAuthorizedErrorEnum.SUCCESS;
     } catch (Exception e) {
       String err = e.getMessage();
       if (err.contains("not authorized")) {
-        return GitAuthorizedError.ERROR;
+        return GitAuthorizedErrorEnum.ERROR;
       } else if (err.contains("Authentication is required")) {
-        return GitAuthorizedError.REQUIRED;
+        return GitAuthorizedErrorEnum.REQUIRED;
       }
-      return GitAuthorizedError.UNKNOW;
+      return GitAuthorizedErrorEnum.UNKNOW;
     }
   }
 
@@ -184,15 +186,21 @@ public class Project implements Serializable {
 
   @JsonIgnore
   public String getMavenArgs() {
-    String mvn = "mvn";
+    boolean windows = Utils.isWindows();
+    String mvn = windows ? "mvn.cmd" : "mvn";
+
+    String mavenHome = System.getenv("M2_HOME");
+    if (mavenHome == null) {
+      mavenHome = System.getenv("MAVEN_HOME");
+    }
+    if (mavenHome != null) {
+      mvn = mavenHome + "/bin/" + mvn;
+    }
+
     try {
-      if (CommonUtils.isWindows()) {
-        CommandUtils.execute("mvn.cmd --version");
-      } else {
-        CommandUtils.execute("mvn --version");
-      }
+      CommandUtils.execute(mvn + " --version");
     } catch (Exception e) {
-      if (CommonUtils.isWindows()) {
+      if (windows) {
         mvn = WebUtils.getAppHome().concat("/bin/mvnw.cmd");
       } else {
         mvn = WebUtils.getAppHome().concat("/bin/mvnw");
@@ -201,22 +209,67 @@ public class Project implements Serializable {
 
     StringBuilder cmdBuffer = new StringBuilder(mvn).append(" clean package -DskipTests ");
 
-    if (StringUtils.isNotEmpty(this.buildArgs)) {
-      cmdBuffer.append(this.buildArgs.trim());
+    if (StringUtils.isNotBlank(this.buildArgs)) {
+      List<String> dangerArgs = getDangerArgs(this.buildArgs);
+      if (dangerArgs.isEmpty()) {
+        cmdBuffer.append(this.buildArgs.trim());
+      } else {
+        throw new IllegalArgumentException(
+            String.format(
+                "Invalid build args, dangerous operation symbol detected: %s, in your buildArgs: %s",
+                dangerArgs.stream().collect(Collectors.joining(",")), this.buildArgs));
+      }
     }
 
     String setting = InternalConfigHolder.get(CommonConfig.MAVEN_SETTINGS_PATH());
-    if (StringUtils.isNotEmpty(setting)) {
-      cmdBuffer.append(" --settings ").append(setting);
+    if (StringUtils.isNotBlank(setting)) {
+      List<String> dangerArgs = getDangerArgs(setting);
+      if (dangerArgs.isEmpty()) {
+        File file = new File(setting);
+        if (file.exists() && file.isFile()) {
+          cmdBuffer.append(" --settings ").append(setting);
+        } else {
+          throw new IllegalArgumentException(
+              String.format("Invalid maven setting path, %s no exists or not file", setting));
+        }
+      } else {
+        throw new IllegalArgumentException(
+            String.format(
+                "Invalid maven setting path, dangerous operation symbol detected: %s, in your maven setting path: %s",
+                dangerArgs.stream().collect(Collectors.joining(",")), setting));
+      }
     }
-
     return cmdBuffer.toString();
+  }
+
+  private List<String> getDangerArgs(String param) {
+    String[] args = param.split("\\s+");
+    List<String> dangerArgs = new ArrayList<>();
+    for (String arg : args) {
+      if (arg.length() == 1) {
+        if (arg.equals("|")) {
+          dangerArgs.add("|");
+        }
+        if (arg.equals("&")) {
+          dangerArgs.add("&");
+        }
+      } else {
+        arg = arg.substring(0, 2);
+        if (arg.equals("||")) {
+          dangerArgs.add("||");
+        }
+        if (arg.equals("&&")) {
+          dangerArgs.add("&&");
+        }
+      }
+    }
+    return dangerArgs;
   }
 
   @JsonIgnore
   public String getMavenWorkHome() {
     String buildHome = this.getAppSource().getAbsolutePath();
-    if (CommonUtils.notEmpty(this.getPom())) {
+    if (StringUtils.isNotEmpty(this.getPom())) {
       buildHome =
           new File(buildHome.concat("/").concat(this.getPom())).getParentFile().getAbsolutePath();
     }
@@ -226,14 +279,14 @@ public class Project implements Serializable {
   @JsonIgnore
   public String getLog4BuildStart() {
     return String.format(
-        "%sproject : %s\nbranches: %s\ncommand : %s\n\n",
+        "%sproject : %s%nbranches: %s%ncommand : %s%n%n",
         getLogHeader("maven install"), getName(), getBranches(), getMavenArgs());
   }
 
   @JsonIgnore
   public String getLog4CloneStart() {
     return String.format(
-        "%sproject  : %s\nbranches : %s\nworkspace: %s\n\n",
+        "%sproject  : %s%nbranches : %s%nworkspace: %s%n%n",
         getLogHeader("git clone"), getName(), getBranches(), getAppSource());
   }
 

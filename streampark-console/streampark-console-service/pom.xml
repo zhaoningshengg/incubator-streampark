@@ -46,6 +46,7 @@
         <commons-compress.version>1.21</commons-compress.version>
         <javax-mail.version>1.4.7</javax-mail.version>
         <shiro.version>1.10.0</shiro.version>
+        <jsch.version>0.2.11</jsch.version>
 
         <!-- Pac4j 4.x for jdk 8 -->
         <pac4jVersion>4.5.7</pac4jVersion>
@@ -203,29 +204,18 @@
 
         <!-- pac4j for SSO-->
         <dependency>
-            <groupId>org.pac4j</groupId>
-            <artifactId>pac4j-core</artifactId>
-            <version>${pac4jVersion}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.pac4j</groupId>
-            <artifactId>pac4j-oauth</artifactId>
-            <version>${pac4jVersion}</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.pac4j</groupId>
-            <artifactId>pac4j-oidc</artifactId>
-            <version>${pac4jVersion}</version>
-        </dependency>
-
-        <dependency>
             <groupId>io.buji</groupId>
             <artifactId>buji-pac4j</artifactId>
             <version>${bujiVersion}</version>
-        </dependency>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.pac4j</groupId>
+                    <artifactId>pac4j-core</artifactId>
+                </exclusion>
+            </exclusions>
 
+        </dependency>
+        <!-- Include pac4j-config/core/oauth/oidc-->
         <dependency>
             <groupId>org.pac4j</groupId>
             <artifactId>pac4j-springboot</artifactId>
@@ -234,6 +224,15 @@
                 <exclusion>
                     <groupId>commons-collections</groupId>
                     <artifactId>commons-collections</artifactId>
+                </exclusion>
+                <!-- cas & opensaml is not supported-->
+                <exclusion>
+                    <groupId>org.pac4j</groupId>
+                    <artifactId>pac4j-cas</artifactId>
+                </exclusion>
+                <exclusion>
+                    <groupId>org.pac4j</groupId>
+                    <artifactId>pac4j-saml-opensamlv3</artifactId>
                 </exclusion>
             </exclusions>
         </dependency>
@@ -271,6 +270,12 @@
             <groupId>org.postgresql</groupId>
             <artifactId>postgresql</artifactId>
             <version>${postgresql.version}</version>
+            <optional>true</optional>
+        </dependency>
+
+        <dependency>
+            <groupId>mysql</groupId>
+            <artifactId>mysql-connector-java</artifactId>
             <optional>true</optional>
         </dependency>
 
@@ -331,6 +336,18 @@
             <groupId>org.eclipse.jgit</groupId>
             <artifactId>org.eclipse.jgit.ssh.jsch</artifactId>
             <version>${eclipse.jgit.version}</version>
+            <exclusions>
+                <exclusion>
+                    <groupId>com.jcraft</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <dependency>
+            <groupId>com.github.mwiede</groupId>
+            <artifactId>jsch</artifactId>
+            <version>${jsch.version}</version>
         </dependency>
 
         <dependency>
@@ -429,6 +446,13 @@
         <dependency>
             <groupId>org.slf4j</groupId>
             <artifactId>log4j-over-slf4j</artifactId>
+        </dependency>
+
+        <!--tika -->
+        <dependency>
+            <groupId>org.apache.tika</groupId>
+            <artifactId>tika-core</artifactId>
+            <version>1.20</version>
         </dependency>
 
         <!-- logback -->
@@ -553,6 +577,13 @@
                             <version>${project.version}</version>
                             <outputDirectory>${project.build.directory}/shims</outputDirectory>
                         </dependency>
+                        <!-- flink 1.18 support-->
+                        <dependency>
+                            <groupId>org.apache.streampark</groupId>
+                            <artifactId>streampark-flink-shims_flink-1.18_${scala.binary.version}</artifactId>
+                            <version>${project.version}</version>
+                            <outputDirectory>${project.build.directory}/shims</outputDirectory>
+                        </dependency>
                         <!-- flink-submit-core -->
                         <dependency>
                             <groupId>org.apache.streampark</groupId>
@@ -593,6 +624,37 @@
                                 <descriptor>${basedir}/src/main/assembly/assembly.xml</descriptor>
                             </descriptors>
                         </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>net.alchim31.maven</groupId>
+                <artifactId>scala-maven-plugin</artifactId>
+                <configuration>
+                    <compileOrder>JavaThenScala</compileOrder>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>com.diffplug.spotless</groupId>
+                <artifactId>spotless-maven-plugin</artifactId>
+                <version>${maven-spotless-plugin.version}</version>
+                <configuration>
+                    <scala>
+                        <scalafmt>
+                            <version>${spotless.scalafmt.version}</version>
+                            <file>${maven.multiModuleProjectDirectory}/.scalafmt-fp.conf</file>
+                        </scalafmt>
+                    </scala>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>spotless-check</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
                     </execution>
                 </executions>
             </plugin>

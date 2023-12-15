@@ -16,7 +16,7 @@
  */
 package org.apache.streampark.common.conf
 
-import org.apache.streampark.common.util.Utils.StringCasts
+import org.apache.streampark.common.util.ImplicitsUtils._
 
 import java.util.Properties
 
@@ -50,7 +50,7 @@ case class ConfigOption[T](
     case null =>
       if (required) {
         prop.get(fullKey) match {
-          case null => throw error("is require")
+          case null => throw error("Is require")
           case v => v.toString.cast[T](classType)
         }
       } else {

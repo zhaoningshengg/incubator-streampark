@@ -17,10 +17,11 @@
 
 package org.apache.streampark.common.enums;
 
-import java.io.Serializable;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 /** kubernetes.rest-service.exposed.type */
-public enum FlinkK8sRestExposedType implements Serializable {
+public enum FlinkK8sRestExposedType {
 
   /** LoadBalancer */
   LOAD_BALANCER("LoadBalancer", 0),
@@ -33,27 +34,30 @@ public enum FlinkK8sRestExposedType implements Serializable {
 
   private final String name;
 
-  private final Integer value;
+  private final Integer type;
 
-  FlinkK8sRestExposedType(String name, Integer value) {
+  FlinkK8sRestExposedType(@Nonnull String name, @Nonnull Integer type) {
     this.name = name;
-    this.value = value;
+    this.type = type;
   }
 
-  public static FlinkK8sRestExposedType of(Integer value) {
+  @Nullable
+  public static FlinkK8sRestExposedType of(@Nullable Integer value) {
     for (FlinkK8sRestExposedType order : values()) {
-      if (order.value.equals(value)) {
+      if (order.type.equals(value)) {
         return order;
       }
     }
     return null;
   }
 
+  @Nonnull
   public String getName() {
     return name;
   }
 
-  public Integer getValue() {
-    return value;
+  @Nonnull
+  public Integer getType() {
+    return type;
   }
 }

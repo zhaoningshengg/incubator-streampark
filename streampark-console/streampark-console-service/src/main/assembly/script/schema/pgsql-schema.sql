@@ -212,6 +212,7 @@ create table "public"."t_flink_app" (
   "job_manager_url" varchar(255) collate "pg_catalog"."default",
   "version_id" int8,
   "cluster_id" varchar(45) collate "pg_catalog"."default",
+  "k8s_name" varchar(63) collate "pg_catalog"."default",
   "k8s_namespace" varchar(63) collate "pg_catalog"."default",
   "flink_image" varchar(128) collate "pg_catalog"."default",
   "state" int2,
@@ -248,7 +249,8 @@ create table "public"."t_flink_app" (
   "flink_cluster_id" int8,
   "ingress_template" text collate "pg_catalog"."default",
   "default_mode_ingress" text collate "pg_catalog"."default",
-  "tags" varchar(500) collate "pg_catalog"."default"
+  "tags" varchar(500) collate "pg_catalog"."default",
+  "probing" boolean default false
 )
 ;
 alter table "public"."t_flink_app" add constraint "t_flink_app_pkey" primary key ("id");
@@ -569,6 +571,7 @@ comment on column "public"."t_team"."id" is 'team id';
 comment on column "public"."t_team"."team_name" is 'team name';
 comment on column "public"."t_team"."create_time" is 'creation time';
 comment on column "public"."t_team"."modify_time" is 'modify time';
+alter table "public"."t_team" add constraint "t_team_pkey" primary key ("id");
 create index "un_team_name" on "public"."t_team" using btree (
   "team_name" collate "pg_catalog"."default" "pg_catalog"."text_ops" asc nulls last
 );
@@ -617,11 +620,14 @@ create table "public"."t_resource" (
                                        "id" int8 not null default nextval('streampark_t_resource_id_seq'::regclass),
                                        "resource_name" varchar(128) collate "pg_catalog"."default" not null,
                                        "resource_type" int4,
+                                       "resource_path" varchar(255) default null,
                                        "resource" text collate "pg_catalog"."default",
                                        "engine_type" int4,
                                        "main_class" varchar(255) collate "pg_catalog"."default",
                                        "description" text collate "pg_catalog"."default" default null,
                                        "creator_id" int8  not null,
+                                       "connector_required_options" text default null,
+                                       "connector_optional_options" text default null,
                                        "team_id" int8  not null,
                                        "create_time" timestamp(6) not null default timezone('UTC-8'::text, (now())::timestamp(0) without time zone),
                                        "modify_time" timestamp(6) not null default timezone('UTC-8'::text, (now())::timestamp(0) without time zone)

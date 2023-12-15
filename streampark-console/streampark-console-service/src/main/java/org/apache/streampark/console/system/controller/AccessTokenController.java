@@ -21,7 +21,7 @@ import org.apache.streampark.common.util.CURLBuilder;
 import org.apache.streampark.console.base.domain.RestRequest;
 import org.apache.streampark.console.base.domain.RestResponse;
 import org.apache.streampark.console.base.exception.InternalException;
-import org.apache.streampark.console.core.enums.AccessTokenState;
+import org.apache.streampark.console.core.enums.AccessTokenStateEnum;
 import org.apache.streampark.console.core.service.CommonService;
 import org.apache.streampark.console.system.entity.AccessToken;
 import org.apache.streampark.console.system.service.AccessTokenService;
@@ -92,14 +92,14 @@ public class AccessTokenController {
     if (userId != null) {
       AccessToken accessToken = accessTokenService.getByUserId(userId);
       if (accessToken == null) {
-        restResponse.data(AccessTokenState.NULL.get());
+        restResponse.data(AccessTokenStateEnum.NULL.get());
       } else if (AccessToken.STATUS_DISABLE.equals(accessToken.getFinalStatus())) {
-        restResponse.data(AccessTokenState.INVALID.get());
+        restResponse.data(AccessTokenStateEnum.INVALID.get());
       } else {
-        restResponse.data(AccessTokenState.OK.get());
+        restResponse.data(AccessTokenStateEnum.OK.get());
       }
     } else {
-      restResponse.data(AccessTokenState.INVALID.get());
+      restResponse.data(AccessTokenStateEnum.INVALID.get());
     }
     return restResponse;
   }
@@ -117,7 +117,7 @@ public class AccessTokenController {
   @RequiresPermissions("token:view")
   public RestResponse tokensList(
       RestRequest restRequest, @Parameter(hidden = true) AccessToken accessToken) {
-    IPage<AccessToken> accessTokens = accessTokenService.findAccessTokens(accessToken, restRequest);
+    IPage<AccessToken> accessTokens = accessTokenService.getPage(accessToken, restRequest);
     return RestResponse.success(accessTokens);
   }
 
@@ -150,7 +150,7 @@ public class AccessTokenController {
   @DeleteMapping(value = "delete")
   @RequiresPermissions("token:delete")
   public RestResponse deleteToken(@NotBlank(message = "{required}") Long tokenId) {
-    boolean res = accessTokenService.deleteToken(tokenId);
+    boolean res = accessTokenService.removeById(tokenId);
     return RestResponse.success(res);
   }
 

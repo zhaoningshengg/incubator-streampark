@@ -70,21 +70,6 @@ spring:
     converters:
       preferred-json-mapper: jackson
 
-management:
-  endpoints:
-    web:
-      exposure:
-        include: [ 'health', 'httptrace', 'metrics' ]
-  endpoint:
-    health:
-      enabled: true
-      show-details: always
-      probes:
-        enabled: true
-  health:
-    ldap:
-      enabled: false
-
 streampark:
   proxy:
     # knox process address https://cdpsit02.example.cn:8443/gateway/cdp-proxy/yarn
@@ -92,8 +77,8 @@ streampark:
     # lark alert proxy,default https://open.feishu.cn
     lark-url:
   yarn:
-    # default sample, or kerberos
-    http-auth: sample
+    # default simple, or kerberos
+    http-auth: simple
 
   # HADOOP_USER_NAME
   hadoop-user-name: hdfs
@@ -121,6 +106,9 @@ streampark:
       polling-interval-sec:
         job-status: 2
         cluster-metric: 3
+    # If you need to specify an ingress controller, you can use this.
+    ingress:
+      class: nginx
 
   # packer garbage resources collection configuration
   packer-gc:
@@ -128,6 +116,12 @@ streampark:
     max-resource-expired-hours: 120
     # gc task running interval hours
     exec-cron: 0 0 0/6 * * ?
+  # application backup clean configuration
+  backup-clean:
+    # maximum retention number of backup
+    max-backup-num: 5
+    # default running once a day
+    exec-cron: 0 0 1 * * ?
 
   shiro:
     # token timeout, unit second

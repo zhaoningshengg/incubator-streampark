@@ -1,25 +1,9 @@
-<!--
-  Licensed to the Apache Software Foundation (ASF) under one or more
-  contributor license agreements.  See the NOTICE file distributed with
-  this work for additional information regarding copyright ownership.
-  The ASF licenses this file to You under the Apache License, Version 2.0
-  (the "License"); you may not use this file except in compliance with
-  the License.  You may obtain a copy of the License at
-
-      https://www.apache.org/licenses/LICENSE-2.0
-
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
--->
 <template>
   <div class="scrollbar">
     <div
       ref="wrap"
       :class="[wrapClass, 'scrollbar__wrap', native ? '' : 'scrollbar__wrap--hidden-default']"
-      :style="style"
+      :style="getStyle"
       @scroll="handleScroll"
     >
       <component :is="tag" ref="resize" :class="['scrollbar__view', viewClass]" :style="viewStyle">
@@ -48,6 +32,7 @@
     unref,
   } from 'vue';
   import Bar from './bar';
+  import { CSSProperties } from 'vue';
 
   export default defineComponent({
     name: 'Scrollbar',
@@ -90,11 +75,11 @@
 
       provide('scroll-bar-wrap', wrap);
 
-      const style = computed(() => {
+      const getStyle = computed(() => {
         if (Array.isArray(props.wrapStyle)) {
-          return toObject(props.wrapStyle);
+          return toObject(props.wrapStyle) as CSSProperties;
         }
-        return props.wrapStyle;
+        return props.wrapStyle as unknown as CSSProperties;
       });
 
       const handleScroll = () => {
@@ -138,7 +123,7 @@
         moveY,
         sizeWidth,
         sizeHeight,
-        style,
+        getStyle,
         wrap,
         resize,
         update,

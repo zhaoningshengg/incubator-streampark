@@ -18,7 +18,7 @@
 package org.apache.streampark.flink.client.bean
 
 import org.apache.streampark.common.conf.{FlinkVersion, Workspace}
-import org.apache.streampark.common.enums.{ExecutionMode, FlinkK8sRestExposedType}
+import org.apache.streampark.common.enums.{FlinkExecutionMode, FlinkK8sRestExposedType}
 import org.apache.streampark.flink.util.FlinkUtils
 
 import org.apache.commons.io.FileUtils
@@ -31,9 +31,10 @@ import java.util.{Map => JavaMap}
 
 case class DeployRequest(
     flinkVersion: FlinkVersion,
-    executionMode: ExecutionMode,
+    executionMode: FlinkExecutionMode,
     properties: JavaMap[String, Any],
     clusterId: String,
+    id: Long,
     @Nullable k8sDeployParam: KubernetesDeployParam) {
 
   private[client] lazy val hdfsWorkspace = {

@@ -121,7 +121,7 @@ private[this] object LoggerFactory extends LoggerFactoryBinder {
   override def getLoggerFactory: ILoggerFactory = {
     if (contextSelectorBinder.getContextSelector == null) {
       throw new IllegalStateException(
-        "contextSelector cannot be null. See also " + CoreConstants.CODES_URL + "#null_CS")
+        "'contextSelector' cannot be null. See also " + CoreConstants.CODES_URL + "#null_CS")
     }
     contextSelectorBinder.getContextSelector.getLoggerContext
   }
@@ -140,7 +140,7 @@ private[this] object LoggerFactory extends LoggerFactoryBinder {
         val configurator = new JoranConfigurator()
         configurator.setContext(loggerContext)
         val text = FileUtils
-          .readString(new File(path))
+          .readFile(new File(path))
           .replaceAll("org.slf4j", s"$shadedPackage.org.slf4j")
           .replaceAll("ch.qos.logback", s"$shadedPackage.ch.qos.logback")
           .replaceAll("org.apache.log4j", s"$shadedPackage.org.apache.log4j")

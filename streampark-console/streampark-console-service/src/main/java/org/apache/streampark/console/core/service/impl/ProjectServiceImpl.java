@@ -17,10 +17,12 @@
 
 package org.apache.streampark.console.core.service.impl;
 
+import org.apache.streampark.common.Constant;
 import org.apache.streampark.common.conf.CommonConfig;
 import org.apache.streampark.common.conf.InternalConfigHolder;
 import org.apache.streampark.common.conf.Workspace;
 import org.apache.streampark.common.util.CompletableFutureUtils;
+import org.apache.streampark.common.util.FileUtils;
 import org.apache.streampark.common.util.ThreadUtils;
 import org.apache.streampark.common.util.Utils;
 import org.apache.streampark.console.base.domain.ResponseCode;
@@ -28,18 +30,17 @@ import org.apache.streampark.console.base.domain.RestRequest;
 import org.apache.streampark.console.base.domain.RestResponse;
 import org.apache.streampark.console.base.exception.ApiAlertException;
 import org.apache.streampark.console.base.mybatis.pager.MybatisPager;
-import org.apache.streampark.console.base.util.FileUtils;
 import org.apache.streampark.console.base.util.GZipUtils;
 import org.apache.streampark.console.core.entity.Application;
 import org.apache.streampark.console.core.entity.Project;
-import org.apache.streampark.console.core.enums.BuildState;
-import org.apache.streampark.console.core.enums.GitCredential;
-import org.apache.streampark.console.core.enums.ReleaseState;
+import org.apache.streampark.console.core.enums.BuildStateEnum;
+import org.apache.streampark.console.core.enums.GitCredentialEnum;
+import org.apache.streampark.console.core.enums.ReleaseStateEnum;
 import org.apache.streampark.console.core.mapper.ProjectMapper;
-import org.apache.streampark.console.core.service.ApplicationService;
 import org.apache.streampark.console.core.service.ProjectService;
-import org.apache.streampark.console.core.task.FlinkHttpWatcher;
+import org.apache.streampark.console.core.service.application.ApplicationManageService;
 import org.apache.streampark.console.core.task.ProjectBuildTask;
+import org.apache.streampark.console.core.watcher.FlinkAppHttpWatcher;
 
 import org.apache.flink.configuration.MemorySize;
 
@@ -80,9 +81,9 @@ import java.util.stream.Stream;
 public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
     implements ProjectService {
 
-  @Autowired private ApplicationService applicationService;
+  @Autowired private ApplicationManageService applicationManageService;
 
-  @Autowired private FlinkHttpWatcher flinkHttpWatcher;
+  @Autowired private FlinkAppHttpWatcher flinkAppHttpWatcher;
 
   private final ExecutorService executorService =
       new ThreadPoolExecutor(
@@ -100,21 +101,19 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
         new LambdaQueryWrapper<Project>().eq(Project::getName, project.getName());
     long count = count(queryWrapper);
     RestResponse response = RestResponse.success();
-    if (count == 0) {
-      project.setCreateTime(new Date());
-      boolean status = save(project);
-      if (status) {
-        return response.message("Add project successfully").data(true);
-      } else {
-        return response.message("Add project failed").data(false);
-      }
-    } else {
-      throw new ApiAlertException("project name already exists,add project failed");
+
+    ApiAlertException.throwIfTrue(count > 0, "project name already exists, add project failed");
+
+    project.setCreateTime(new Date());
+    boolean status = save(project);
+
+    if (status) {
+      return response.message("Add project successfully").data(true);
     }
+    return response.message("Add project failed").data(false);
   }
 
   @Override
-  @Transactional(rollbackFor = {Exception.class})
   public boolean update(Project projectParam) {
     Project project = getById(projectParam.getId());
     Utils.notNull(project);
@@ -122,7 +121,7 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
         project.getTeamId().equals(projectParam.getTeamId()),
         "TeamId can't be changed, update project failed.");
     ApiAlertException.throwIfFalse(
-        !project.getBuildState().equals(BuildState.BUILDING.get()),
+        !project.getBuildState().equals(BuildStateEnum.BUILDING.get()),
         "The project is being built, update project failed.");
     project.setName(projectParam.getName());
     project.setUrl(projectParam.getUrl());
@@ -134,22 +133,22 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
     project.setPom(projectParam.getPom());
     project.setDescription(projectParam.getDescription());
     project.setBuildArgs(projectParam.getBuildArgs());
-    if (GitCredential.isSSH(project.getGitCredential())) {
+    if (GitCredentialEnum.isSSH(project.getGitCredential())) {
       project.setUserName(null);
     } else {
       project.setPrvkeyPath(null);
     }
     if (projectParam.getBuildState() != null) {
       project.setBuildState(projectParam.getBuildState());
-      if (BuildState.of(projectParam.getBuildState()).equals(BuildState.NEED_REBUILD)) {
-        List<Application> applications = getApplications(project);
+      if (BuildStateEnum.NEED_REBUILD == BuildStateEnum.of(projectParam.getBuildState())) {
+        List<Application> applications = listApps(project);
         // Update deployment status
         applications.forEach(
             (app) -> {
               log.info(
                   "update deploy by project: {}, appName:{}", project.getName(), app.getJobName());
-              app.setRelease(ReleaseState.NEED_CHECK.get());
-              applicationService.updateRelease(app);
+              app.setRelease(ReleaseStateEnum.NEED_CHECK.get());
+              applicationManageService.updateRelease(app);
             });
       }
     }
@@ -158,19 +157,18 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
   }
 
   @Override
-  @Transactional(rollbackFor = {Exception.class})
-  public boolean delete(Long id) {
+  public boolean removeById(Long id) {
     Project project = getById(id);
     Utils.notNull(project);
     LambdaQueryWrapper<Application> queryWrapper =
         new LambdaQueryWrapper<Application>().eq(Application::getProjectId, id);
-    long count = applicationService.count(queryWrapper);
+    long count = applicationManageService.count(queryWrapper);
     if (count > 0) {
       return false;
     }
     try {
       project.delete();
-      removeById(id);
+      super.removeById(id);
       return true;
     } catch (IOException e) {
       return false;
@@ -178,9 +176,9 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
   }
 
   @Override
-  public IPage<Project> page(Project project, RestRequest request) {
+  public IPage<Project> getPage(Project project, RestRequest request) {
     Page<Project> page = new MybatisPager<Project>().getDefaultPage(request);
-    return this.baseMapper.page(page, project);
+    return this.baseMapper.selectPage(page, project);
   }
 
   @Override
@@ -189,40 +187,40 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
   }
 
   @Override
-  public List<Project> findByTeamId(Long teamId) {
-    return this.baseMapper.selectByTeamId(teamId);
+  public List<Project> listByTeamId(Long teamId) {
+    return this.baseMapper.selectProjectsByTeamId(teamId);
   }
 
   @Override
   public void build(Long id) throws Exception {
     Project project = getById(id);
-    this.baseMapper.updateBuildState(project.getId(), BuildState.BUILDING.get());
+    this.baseMapper.updateBuildState(project.getId(), BuildStateEnum.BUILDING.get());
     String logPath = getBuildLogPath(id);
     ProjectBuildTask projectBuildTask =
         new ProjectBuildTask(
             logPath,
             project,
-            buildState -> {
-              baseMapper.updateBuildState(id, buildState.get());
-              if (buildState == BuildState.SUCCESSFUL) {
+            buildStateEnum -> {
+              baseMapper.updateBuildState(id, buildStateEnum.get());
+              if (buildStateEnum == BuildStateEnum.SUCCESSFUL) {
                 baseMapper.updateBuildTime(id);
               }
-              flinkHttpWatcher.init();
+              flinkAppHttpWatcher.init();
             },
             fileLogger -> {
               List<Application> applications =
-                  this.applicationService.getByProjectId(project.getId());
+                  this.applicationManageService.listByProjectId(project.getId());
               applications.forEach(
                   (app) -> {
                     fileLogger.info(
                         "update deploy by project: {}, appName:{}",
                         project.getName(),
                         app.getJobName());
-                    app.setRelease(ReleaseState.NEED_RELEASE.get());
+                    app.setRelease(ReleaseStateEnum.NEED_RELEASE.get());
                     app.setBuild(true);
-                    this.applicationService.updateRelease(app);
+                    this.applicationManageService.updateRelease(app);
                   });
-              flinkHttpWatcher.init();
+              flinkAppHttpWatcher.init();
             });
     CompletableFuture<Void> buildTask =
         CompletableFuture.runAsync(projectBuildTask, executorService);
@@ -231,11 +229,11 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
   }
 
   @Override
-  public List<String> modules(Long id) {
+  public List<String> listModules(Long id) {
     Project project = getById(id);
     Utils.notNull(project);
 
-    if (!BuildState.SUCCESSFUL.equals(BuildState.of(project.getBuildState()))
+    if (BuildStateEnum.SUCCESSFUL != BuildStateEnum.of(project.getBuildState())
         || !project.getDistHome().exists()) {
       return Collections.emptyList();
     }
@@ -247,17 +245,17 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
   }
 
   @Override
-  public List<String> jars(Project project) {
-    List<String> list = new ArrayList<>(0);
+  public List<String> listJars(Project project) {
+    List<String> jarList = new ArrayList<>(0);
     ApiAlertException.throwIfNull(
         project.getModule(), "Project module can't be null, please check.");
     File apps = new File(project.getDistHome(), project.getModule());
     for (File file : Objects.requireNonNull(apps.listFiles())) {
-      if (file.getName().endsWith(".jar")) {
-        list.add(file.getName());
+      if (file.getName().endsWith(Constant.JAR_SUFFIX)) {
+        jarList.add(file.getName());
       }
     }
-    return list;
+    return jarList;
   }
 
   @Override
@@ -272,12 +270,12 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
   }
 
   @Override
-  public List<Application> getApplications(Project project) {
-    return this.applicationService.getByProjectId(project.getId());
+  public List<Application> listApps(Project project) {
+    return this.applicationManageService.listByProjectId(project.getId());
   }
 
   @Override
-  public boolean checkExists(Project project) {
+  public boolean exists(Project project) {
     if (project.getId() != null) {
       Project proj = getById(project.getId());
       if (proj.getName().equals(project.getName())) {
@@ -297,13 +295,13 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
       if (!unzipFile.exists()) {
         GZipUtils.deCompress(file.getAbsolutePath(), file.getParentFile().getAbsolutePath());
       }
-      List<Map<String, Object>> list = new ArrayList<>();
+      List<Map<String, Object>> confList = new ArrayList<>();
       File[] files = unzipFile.listFiles(x -> "conf".equals(x.getName()));
       Utils.notNull(files);
       for (File item : files) {
-        eachFile(item, list, true);
+        eachFile(item, confList, true);
       }
-      return list;
+      return confList;
     } catch (Exception e) {
       log.info(e.getMessage());
     }
@@ -313,30 +311,30 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
   private void eachFile(File file, List<Map<String, Object>> list, Boolean isRoot) {
     if (file != null && file.exists() && file.listFiles() != null) {
       if (isRoot) {
-        Map<String, Object> map = new HashMap<>(0);
-        map.put("key", file.getName());
-        map.put("title", file.getName());
-        map.put("value", file.getAbsolutePath());
+        Map<String, Object> fileMap = new HashMap<>(0);
+        fileMap.put("key", file.getName());
+        fileMap.put("title", file.getName());
+        fileMap.put("value", file.getAbsolutePath());
         List<Map<String, Object>> children = new ArrayList<>();
         eachFile(file, children, false);
         if (!children.isEmpty()) {
-          map.put("children", children);
+          fileMap.put("children", children);
         }
-        list.add(map);
+        list.add(fileMap);
       } else {
         for (File item : Objects.requireNonNull(file.listFiles())) {
           String title = item.getName();
           String value = item.getAbsolutePath();
-          Map<String, Object> map = new HashMap<>(0);
-          map.put("key", title);
-          map.put("title", title);
-          map.put("value", value);
+          Map<String, Object> fileMap = new HashMap<>(0);
+          fileMap.put("key", title);
+          fileMap.put("title", title);
+          fileMap.put("value", value);
           List<Map<String, Object>> children = new ArrayList<>();
           eachFile(item, children, false);
           if (!children.isEmpty()) {
-            map.put("children", children);
+            fileMap.put("children", children);
           }
-          list.add(map);
+          list.add(fileMap);
         }
       }
     }
@@ -377,7 +375,7 @@ public class ProjectServiceImpl extends ServiceImpl<ProjectMapper, Project>
       String error =
           String.format("Read build log file(fileName=%s) caused an exception: ", logFile);
       log.error(error, e);
-      return RestResponse.fail(error + e.getMessage(), ResponseCode.CODE_FAIL);
+      return RestResponse.fail(ResponseCode.CODE_FAIL, error + e.getMessage());
     }
   }
 

@@ -22,8 +22,8 @@ import org.apache.streampark.console.base.domain.RestRequest;
 import org.apache.streampark.console.base.domain.RestResponse;
 import org.apache.streampark.console.base.exception.ApiAlertException;
 import org.apache.streampark.console.core.annotation.PermissionAction;
-import org.apache.streampark.console.core.enums.LoginType;
-import org.apache.streampark.console.core.enums.PermissionType;
+import org.apache.streampark.console.core.enums.LoginTypeEnum;
+import org.apache.streampark.console.core.enums.PermissionTypeEnum;
 import org.apache.streampark.console.core.service.CommonService;
 import org.apache.streampark.console.system.entity.Team;
 import org.apache.streampark.console.system.entity.User;
@@ -69,7 +69,7 @@ public class UserController {
       value = {"user:view", "app:view"},
       logical = Logical.OR)
   public RestResponse userList(RestRequest restRequest, User user) {
-    IPage<User> userList = userService.findUserDetail(user, restRequest);
+    IPage<User> userList = userService.getPage(user, restRequest);
     return RestResponse.success(userList);
   }
 
@@ -77,7 +77,7 @@ public class UserController {
   @PostMapping("post")
   @RequiresPermissions("user:add")
   public RestResponse addUser(@Valid User user) throws Exception {
-    user.setLoginType(LoginType.PASSWORD);
+    user.setLoginType(LoginTypeEnum.PASSWORD);
     this.userService.createUser(user);
     return RestResponse.success();
   }
@@ -100,19 +100,19 @@ public class UserController {
   @Operation(summary = "List without token users")
   @PostMapping("getNoTokenUser")
   public RestResponse getNoTokenUser() {
-    List<User> userList = this.userService.getNoTokenUser();
+    List<User> userList = this.userService.listNoTokenUser();
     return RestResponse.success(userList);
   }
 
   @Operation(summary = "Check the username")
   @PostMapping("check/name")
   public RestResponse checkUserName(@NotBlank(message = "{required}") String username) {
-    boolean result = this.userService.findByName(username) == null;
+    boolean result = this.userService.getByUsername(username) == null;
     return RestResponse.success(result);
   }
 
   @Operation(summary = "Update password")
-  @PermissionAction(id = "#user.userId", type = PermissionType.USER)
+  @PermissionAction(id = "#user.userId", type = PermissionTypeEnum.USER)
   @PutMapping("password")
   public RestResponse updatePassword(User user) throws Exception {
     userService.updatePassword(user);
@@ -133,7 +133,7 @@ public class UserController {
   public RestResponse initTeam(Long teamId, Long userId) {
     Team team = teamService.getById(teamId);
     if (team == null) {
-      return RestResponse.fail("teamId is invalid", ResponseCode.CODE_FAIL_ALERT);
+      return RestResponse.fail(ResponseCode.CODE_FAIL_ALERT, "teamId is invalid");
     }
     userService.setLastTeam(teamId, userId);
     return RestResponse.success();
@@ -144,7 +144,7 @@ public class UserController {
   public RestResponse setTeam(Long teamId) {
     Team team = teamService.getById(teamId);
     if (team == null) {
-      return RestResponse.fail("TeamId is invalid, set team failed.", ResponseCode.CODE_FAIL_ALERT);
+      return RestResponse.fail(ResponseCode.CODE_FAIL_ALERT, "TeamId is invalid, set team failed.");
     }
     User user = commonService.getCurrentUser();
     ApiAlertException.throwIfNull(user, "Current login user is null, set team failed.");
@@ -161,7 +161,7 @@ public class UserController {
   @Operation(summary = "List the team users")
   @PostMapping("appOwners")
   public RestResponse appOwners(Long teamId) {
-    List<User> userList = userService.findByAppOwner(teamId);
+    List<User> userList = userService.listByTeamId(teamId);
     userList.forEach(User::dataMasking);
     return RestResponse.success(userList);
   }

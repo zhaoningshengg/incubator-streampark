@@ -21,7 +21,7 @@
         <format>tar.gz</format>
     </formats>
     <includeBaseDirectory>true</includeBaseDirectory>
-    <baseDirectory>apache-streampark_${scala.binary.version}-${project.version}-incubating-bin</baseDirectory>
+    <baseDirectory>apache-streampark-${project.version}-incubating-bin</baseDirectory>
 
     <dependencySets>
         <dependencySet>
@@ -67,6 +67,11 @@
         <fileSet>
             <directory>${project.build.directory}/../src/main/assembly/logs</directory>
             <outputDirectory>logs</outputDirectory>
+            <fileMode>0755</fileMode>
+        </fileSet>
+        <fileSet>
+            <directory>${project.build.directory}/../src/main/assembly/python</directory>
+            <outputDirectory>python</outputDirectory>
             <fileMode>0755</fileMode>
         </fileSet>
         <fileSet>

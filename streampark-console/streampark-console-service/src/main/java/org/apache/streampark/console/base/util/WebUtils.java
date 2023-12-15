@@ -17,7 +17,7 @@
 
 package org.apache.streampark.console.base.util;
 
-import org.apache.streampark.common.conf.ConfigConst;
+import org.apache.streampark.common.conf.ConfigKeys;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -30,6 +30,12 @@ import java.util.stream.IntStream;
 /** Web Utils */
 @Slf4j
 public final class WebUtils {
+
+  private static final String TEMP = "temp";
+  private static final String LIB = "lib";
+  private static final String PLUGINS = "plugins";
+  private static final String CLIENT = "client";
+  private static final String CONF = "conf";
 
   private WebUtils() {}
 
@@ -91,7 +97,7 @@ public final class WebUtils {
   }
 
   public static String getAppHome() {
-    return System.getProperty(ConfigConst.KEY_APP_HOME());
+    return System.getProperty(ConfigKeys.KEY_APP_HOME());
   }
 
   public static File getAppDir(String dir) {
@@ -99,22 +105,22 @@ public final class WebUtils {
   }
 
   public static File getAppTempDir() {
-    return getAppDir("temp");
+    return getAppDir(TEMP);
   }
 
   public static File getAppLibDir() {
-    return getAppDir("lib");
+    return getAppDir(LIB);
   }
 
   public static File getAppPluginsDir() {
-    return getAppDir("plugins");
+    return getAppDir(PLUGINS);
   }
 
   public static File getAppClientDir() {
-    return getAppDir("client");
+    return getAppDir(CLIENT);
   }
 
   public static File getAppConfDir() {
-    return getAppDir("conf");
+    return getAppDir(CONF);
   }
 }

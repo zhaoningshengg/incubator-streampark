@@ -62,7 +62,7 @@ public class AccessTokenServiceImpl extends ServiceImpl<AccessTokenMapper, Acces
       return RestResponse.success().put(RestResponse.CODE_KEY, 0).message("user not available");
     }
 
-    if (StringUtils.isEmpty(expireTime)) {
+    if (StringUtils.isBlank(expireTime)) {
       expireTime = AccessToken.DEFAULT_EXPIRE_TIME;
     }
     Long ttl = DateUtils.getTime(expireTime, DateUtils.fullFormat(), TimeZone.getDefault());
@@ -82,14 +82,9 @@ public class AccessTokenServiceImpl extends ServiceImpl<AccessTokenMapper, Acces
   }
 
   @Override
-  public boolean deleteToken(Long id) {
-    return this.removeById(id);
-  }
-
-  @Override
-  public IPage<AccessToken> findAccessTokens(AccessToken tokenParam, RestRequest request) {
+  public IPage<AccessToken> getPage(AccessToken tokenParam, RestRequest request) {
     Page<AccessToken> page = new MybatisPager<AccessToken>().getDefaultPage(request);
-    this.baseMapper.page(page, tokenParam);
+    this.baseMapper.selectPage(page, tokenParam);
     List<AccessToken> records = page.getRecords();
     page.setRecords(records);
     return page;
@@ -97,21 +92,21 @@ public class AccessTokenServiceImpl extends ServiceImpl<AccessTokenMapper, Acces
 
   @Override
   public boolean checkTokenEffective(Long userId, String token) {
-    AccessToken res = baseMapper.getByUserToken(userId, token);
+    AccessToken res = baseMapper.selectByUserToken(userId, token);
     return res != null && AccessToken.STATUS_ENABLE.equals(res.getFinalStatus());
   }
 
   @Override
   public RestResponse toggleToken(Long tokenId) {
-    AccessToken tokenInfo = baseMapper.getById(tokenId);
+    AccessToken tokenInfo = baseMapper.selectById(tokenId);
     if (Objects.isNull(tokenInfo)) {
-      return RestResponse.fail("accessToken could not be found!", ResponseCode.CODE_FAIL_ALERT);
+      return RestResponse.fail(ResponseCode.CODE_FAIL_ALERT, "accessToken could not be found!");
     }
 
     if (User.STATUS_LOCK.equals(tokenInfo.getUserStatus())) {
       return RestResponse.fail(
-          "user status is locked, could not operate this accessToken!",
-          ResponseCode.CODE_FAIL_ALERT);
+          ResponseCode.CODE_FAIL_ALERT,
+          "user status is locked, could not operate this accessToken!");
     }
 
     Integer status =
@@ -127,6 +122,6 @@ public class AccessTokenServiceImpl extends ServiceImpl<AccessTokenMapper, Acces
 
   @Override
   public AccessToken getByUserId(Long userId) {
-    return baseMapper.getByUserId(userId);
+    return baseMapper.selectByUserId(userId);
   }
 }

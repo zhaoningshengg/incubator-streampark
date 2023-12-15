@@ -17,10 +17,12 @@
 
 package org.apache.streampark.flink.client.`trait`
 
-import org.apache.streampark.common.conf.ConfigConst._
+import org.apache.streampark.common.Constant
+import org.apache.streampark.common.conf.ConfigKeys._
 import org.apache.streampark.common.conf.Workspace
-import org.apache.streampark.common.enums.{ApplicationType, DevelopmentMode, ExecutionMode, RestoreMode}
-import org.apache.streampark.common.util.{DeflaterUtils, Logger}
+import org.apache.streampark.common.enums._
+import org.apache.streampark.common.fs.FsOperator
+import org.apache.streampark.common.util._
 import org.apache.streampark.flink.client.bean._
 import org.apache.streampark.flink.core.FlinkClusterClient
 import org.apache.streampark.flink.core.conf.FlinkRunOption
@@ -35,15 +37,13 @@ import org.apache.flink.client.cli.CliFrontend.loadCustomCommandLines
 import org.apache.flink.client.deployment.application.ApplicationConfiguration
 import org.apache.flink.client.program.{ClusterClient, PackagedProgram, PackagedProgramUtils}
 import org.apache.flink.configuration._
+import org.apache.flink.python.PythonOptions
 import org.apache.flink.runtime.jobgraph.{JobGraph, SavepointConfigOptions}
 import org.apache.flink.util.FlinkException
 import org.apache.flink.util.Preconditions.checkNotNull
 
-import java.io.File
 import java.util.{Collections, List => JavaList, Map => JavaMap}
 
-import scala.annotation.tailrec
-import scala.collection.JavaConverters._
 import scala.collection.convert.ImplicitConversions._
 import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
@@ -89,13 +89,26 @@ trait FlinkClientTrait extends Logger {
          |""".stripMargin)
 
     val (commandLine, flinkConfig) = getCommandLineAndFlinkConfig(submitRequest)
-    if (submitRequest.userJarFile != null) {
-      val uri = PackagedProgramUtils.resolveURI(submitRequest.userJarFile.getAbsolutePath)
-      val programOptions = ProgramOptions.create(commandLine)
-      val executionParameters = ExecutionConfigAccessor.fromProgramOptions(
-        programOptions,
-        Collections.singletonList(uri.toString))
-      executionParameters.applyToConfiguration(flinkConfig)
+
+    submitRequest.developmentMode match {
+      case FlinkDevelopmentMode.PYFLINK =>
+        val flinkOptPath: String = System.getenv(ConfigConstants.ENV_FLINK_OPT_DIR)
+        if (StringUtils.isBlank(flinkOptPath)) {
+          logWarn(s"Get environment variable ${ConfigConstants.ENV_FLINK_OPT_DIR} fail")
+          val flinkHome = submitRequest.flinkVersion.flinkHome
+          SystemPropertyUtils.setEnv(ConfigConstants.ENV_FLINK_OPT_DIR, s"$flinkHome/opt")
+          logInfo(
+            s"Set temporary environment variables ${ConfigConstants.ENV_FLINK_OPT_DIR} = $flinkHome/opt")
+        }
+      case _ =>
+        if (submitRequest.userJarFile != null) {
+          val uri = PackagedProgramUtils.resolveURI(submitRequest.userJarFile.getAbsolutePath)
+          val programOptions = ProgramOptions.create(commandLine)
+          val executionParameters = ExecutionConfigAccessor.fromProgramOptions(
+            programOptions,
+            Collections.singletonList(uri.toString))
+          executionParameters.applyToConfiguration(flinkConfig)
+        }
     }
 
     // set common parameter
@@ -125,9 +138,9 @@ trait FlinkClientTrait extends Logger {
         submitRequest.allowNonRestoredState)
       if (
         submitRequest.flinkVersion.checkVersion(
-          RestoreMode.SINCE_FLINK_VERSION) && submitRequest.restoreMode != null
+          FlinkRestoreMode.SINCE_FLINK_VERSION) && submitRequest.restoreMode != null
       ) {
-        flinkConfig.setString(RestoreMode.RESTORE_MODE, submitRequest.restoreMode.getName);
+        flinkConfig.setString(FlinkRestoreMode.RESTORE_MODE, submitRequest.restoreMode.getName);
       }
     }
 
@@ -194,46 +207,86 @@ trait FlinkClientTrait extends Logger {
 
   @throws[Exception]
   def doTriggerSavepoint(
-      request: TriggerSavepointRequest,
+      savepointRequest: TriggerSavepointRequest,
       flinkConf: Configuration): SavepointResponse
 
   @throws[Exception]
   def doCancel(cancelRequest: CancelRequest, flinkConf: Configuration): CancelResponse
 
-  def trySubmit(submitRequest: SubmitRequest, flinkConfig: Configuration, jarFile: File)(
-      restApiFunc: (SubmitRequest, Configuration, File) => SubmitResponse)(
-      jobGraphFunc: (SubmitRequest, Configuration, File) => SubmitResponse): SubmitResponse = {
-    // Prioritize using Rest API submit while using JobGraph submit plan as backup
+  def trySubmit(submitRequest: SubmitRequest, flinkConfig: Configuration)(
+      jobGraphFunc: (SubmitRequest, Configuration) => SubmitResponse,
+      restApiFunc: (SubmitRequest, Configuration) => SubmitResponse): SubmitResponse = {
+    // Prioritize using JobGraph submit plan while using Rest API submit plan as backup
     Try {
-      logInfo(s"[flink-submit] Attempting to submit in Rest API Submit Plan.")
-      restApiFunc(submitRequest, flinkConfig, jarFile)
-    }.getOrElse {
-      logWarn(s"[flink-submit] RestAPI Submit Plan failed,try JobGraph Submit Plan now.")
-      Try(jobGraphFunc(submitRequest, flinkConfig, jarFile)) match {
-        case Success(r) => r
-        case Failure(e) =>
-          logError(s"[flink-submit] Both Rest API Submit Plan and JobGraph Submit Plan failed.")
-          throw e
-      }
-
+      logInfo(s"[flink-submit] Submit job with JobGraph Plan.")
+      jobGraphFunc(submitRequest, flinkConfig)
+    } match {
+      case Failure(e) =>
+        logWarn(
+          s"""\n
+             |[flink-submit] JobGraph Submit Plan failed, error detail:
+             |------------------------------------------------------------------
+             |${ExceptionUtils.stringifyException(e)}
+             |------------------------------------------------------------------
+             |Now retry submit with RestAPI Plan ...
+             |""".stripMargin
+        )
+        Try(restApiFunc(submitRequest, flinkConfig)) match {
+          case Success(r) => r
+          case Failure(e) =>
+            logError(
+              s"""\n
+                 |[flink-submit] RestAPI Submit failed, error detail:
+                 |------------------------------------------------------------------
+                 |${ExceptionUtils.stringifyException(e)}
+                 |------------------------------------------------------------------
+                 |Both JobGraph submit plan and Rest API submit plan all failed!
+                 |""".stripMargin
+            )
+            throw e
+        }
+      case Success(v) => v
     }
   }
 
   private[client] def getJobGraph(
-      flinkConfig: Configuration,
       submitRequest: SubmitRequest,
-      jarFile: File): (PackagedProgram, JobGraph) = {
-    val packageProgram = PackagedProgram.newBuilder
-      .setJarFile(jarFile)
+      flinkConfig: Configuration): (PackagedProgram, JobGraph) = {
+
+    val pkgBuilder = PackagedProgram.newBuilder
       .setEntryPointClassName(
-        flinkConfig.getOptional(ApplicationConfiguration.APPLICATION_MAIN_CLASS).get())
-      .setSavepointRestoreSettings(submitRequest.savepointRestoreSettings)
+        flinkConfig.getOptional(ApplicationConfiguration.APPLICATION_MAIN_CLASS).get()
+      )
       .setArguments(
         flinkConfig
           .getOptional(ApplicationConfiguration.APPLICATION_ARGS)
-          .orElse(Lists.newArrayList()): _*)
-      .build()
+          .orElse(Lists.newArrayList()): _*
+      )
+      .setSavepointRestoreSettings(submitRequest.savepointRestoreSettings)
 
+    submitRequest.developmentMode match {
+      case FlinkDevelopmentMode.PYFLINK =>
+        val pythonVenv: String = Workspace.local.APP_PYTHON_VENV
+        if (!FsOperator.lfs.exists(pythonVenv)) {
+          throw new RuntimeException(s"$pythonVenv File does not exist")
+        }
+        flinkConfig
+          // python.archives
+          .safeSet(PythonOptions.PYTHON_ARCHIVES, pythonVenv)
+          // python.client.executable
+          .safeSet(PythonOptions.PYTHON_CLIENT_EXECUTABLE, Constant.PYTHON_EXECUTABLE)
+          // python.executable
+          .safeSet(PythonOptions.PYTHON_EXECUTABLE, Constant.PYTHON_EXECUTABLE)
+        if (submitRequest.libs.nonEmpty) {
+          pkgBuilder.setUserClassPaths(submitRequest.libs)
+        }
+      case _ =>
+        pkgBuilder
+          .setUserClassPaths(submitRequest.classPaths)
+          .setJarFile(submitRequest.userJarFile)
+    }
+
+    val packageProgram = pkgBuilder.build()
     val jobGraph = PackagedProgramUtils.createJobGraph(
       packageProgram,
       flinkConfig,
@@ -399,60 +452,7 @@ trait FlinkClientTrait extends Logger {
 
   private[this] def extractProgramArgs(submitRequest: SubmitRequest): JavaList[String] = {
     val programArgs = new ArrayBuffer[String]()
-    val args = submitRequest.args
-
-    if (StringUtils.isNotEmpty(args)) {
-      val multiChar = "\""
-      val array = args.split("\\s+")
-      if (!array.exists(_.startsWith(multiChar))) {
-        array.foreach(programArgs +=)
-      } else {
-        val argsArray = new ArrayBuffer[String]()
-        val tempBuffer = new ArrayBuffer[String]()
-
-        @tailrec
-        def processElement(index: Int, multi: Boolean): Unit = {
-
-          if (index == array.length) {
-            if (tempBuffer.nonEmpty) {
-              argsArray += tempBuffer.mkString(" ")
-            }
-            return
-          }
-
-          val next = index + 1
-          val elem = array(index).trim
-
-          if (elem.isEmpty) {
-            processElement(next, multi = false)
-          } else {
-            if (multi) {
-              if (elem.endsWith(multiChar)) {
-                tempBuffer += elem.dropRight(1)
-                argsArray += tempBuffer.mkString(" ")
-                tempBuffer.clear()
-                processElement(next, multi = false)
-              } else {
-                tempBuffer += elem
-                processElement(next, multi)
-              }
-            } else {
-              val until = if (elem.endsWith(multiChar)) 1 else 0
-              if (elem.startsWith(multiChar)) {
-                tempBuffer += elem.drop(1).dropRight(until)
-                processElement(next, multi = true)
-              } else {
-                argsArray += elem.dropRight(until)
-                processElement(next, multi = false)
-              }
-            }
-          }
-        }
-
-        processElement(0, multi = false)
-        argsArray.foreach(x => programArgs += x)
-      }
-    }
+    programArgs ++= PropertiesUtils.extractArguments(submitRequest.args)
 
     if (submitRequest.applicationType == ApplicationType.STREAMPARK_FLINK) {
 
@@ -461,7 +461,7 @@ trait FlinkClientTrait extends Logger {
       programArgs += PARAM_KEY_FLINK_PARALLELISM += getParallelism(submitRequest).toString
 
       submitRequest.developmentMode match {
-        case DevelopmentMode.FLINK_SQL =>
+        case FlinkDevelopmentMode.FLINK_SQL =>
           programArgs += PARAM_KEY_FLINK_SQL += submitRequest.flinkSQL
           if (submitRequest.appConf != null) {
             programArgs += PARAM_KEY_APP_CONF += submitRequest.appConf
@@ -480,7 +480,15 @@ trait FlinkClientTrait extends Logger {
       }
     }
 
-    programArgs.toList.asJava
+    if (
+      submitRequest.developmentMode == FlinkDevelopmentMode.PYFLINK
+      && submitRequest.executionMode != FlinkExecutionMode.YARN_APPLICATION
+    ) {
+      // python file
+      programArgs.add("-py")
+      programArgs.add(submitRequest.userJarFile.getAbsolutePath)
+    }
+    Lists.newArrayList(programArgs: _*)
   }
 
   private[this] def applyConfiguration(
@@ -508,6 +516,13 @@ trait FlinkClientTrait extends Logger {
         case x if value != null && value.toString.nonEmpty => x.set(option, value)
         case x => x
       }
+    }
+    def getOption[T](key: ConfigOption[T]): Option[T] = {
+      Option(flinkConfig.get(key))
+    }
+    def remove[T](key: ConfigOption[T]): Configuration = {
+      flinkConfig.removeConfig(key)
+      flinkConfig
     }
   }
 
@@ -544,7 +559,7 @@ trait FlinkClientTrait extends Logger {
   private def tryGetSavepointPathIfNeed(request: SavepointRequestTrait): String = {
     if (!request.withSavepoint) null
     else {
-      if (StringUtils.isNotEmpty(request.savepointPath)) {
+      if (StringUtils.isNotBlank(request.savepointPath)) {
         request.savepointPath
       } else {
         val configDir = getOptionFromDefaultFlinkConfig[String](
@@ -553,13 +568,13 @@ trait FlinkClientTrait extends Logger {
             .key(CheckpointingOptions.SAVEPOINT_DIRECTORY.key())
             .stringType()
             .defaultValue {
-              if (request.executionMode == ExecutionMode.YARN_APPLICATION) {
+              if (request.executionMode == FlinkExecutionMode.YARN_APPLICATION) {
                 Workspace.remote.APP_SAVEPOINTS
               } else null
             }
         )
 
-        if (StringUtils.isEmpty(configDir)) {
+        if (StringUtils.isBlank(configDir)) {
           throw new FlinkException(
             s"[StreamPark] executionMode: ${request.executionMode.getName}, savePoint path is null or invalid.")
         } else configDir

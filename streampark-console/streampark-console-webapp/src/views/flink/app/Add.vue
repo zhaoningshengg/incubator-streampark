@@ -32,7 +32,7 @@
   import { useDrawer } from '/@/components/Drawer';
   import Mergely from './components/Mergely.vue';
   import { handleConfTemplate } from '/@/api/flink/config';
-  import { fetchAppConf, fetchCreate } from '/@/api/flink/app/app';
+  import { fetchAppConf, fetchCreate } from '/@/api/flink/app';
   import options from './data/option';
   import { useCreateSchema } from './hooks/useCreateSchema';
   import { getAppConfType, handleSubmitParams } from './utils';
@@ -43,7 +43,7 @@
   import VariableReview from './components/VariableReview.vue';
   import PomTemplateTab from './components/PodTemplate/PomTemplateTab.vue';
   import UseSysHadoopConf from './components/UseSysHadoopConf.vue';
-  import { CreateParams } from '/@/api/flink/app/app.type';
+  import { CreateParams } from '/@/api/flink/app.type';
   import { decodeByBase64, encryptByBase64 } from '/@/utils/cipher';
   import {
     AppTypeEnum,
@@ -157,18 +157,38 @@
   /* custom mode */
   async function handleSubmitCustomJob(values) {
     handleCluster(values);
+    // Trigger a pom confirmation operation.
+    await unref(dependencyRef)?.handleApplyPom();
+    // common params...
+    const dependency: { pom?: string; jar?: string } = {};
+    const dependencyRecords = unref(dependencyRef)?.dependencyRecords;
+    const uploadJars = unref(dependencyRef)?.uploadJars;
+    if (unref(dependencyRecords) && unref(dependencyRecords).length > 0) {
+      Object.assign(dependency, {
+        pom: unref(dependencyRecords),
+      });
+    }
+    if (uploadJars && unref(uploadJars).length > 0) {
+      Object.assign(dependency, {
+        jar: unref(uploadJars),
+      });
+    }
     const params = {
-      jobType: JobTypeEnum.JAR,
+      jobType: values.jobType,
       projectId: values.project || null,
       module: values.module || null,
+      dependency:
+        dependency.pom === undefined && dependency.jar === undefined
+          ? null
+          : JSON.stringify(dependency),
       appType: values.appType,
     };
     handleSubmitParams(params, values, k8sTemplate);
     // common params...
     const resourceFrom = values.resourceFrom;
     if (resourceFrom) {
-      if (resourceFrom === 'csv') {
-        params['resourceFrom'] = ResourceFromEnum.CICD;
+      if (resourceFrom == ResourceFromEnum.PROJECT) {
+        params['resourceFrom'] = ResourceFromEnum.PROJECT;
         //streampark flink
         if (values.appType == AppTypeEnum.STREAMPARK_FLINK) {
           const configVal = values.config;
@@ -243,7 +263,7 @@
   async function handleAppCreate(formValue: Recordable) {
     try {
       submitLoading.value = true;
-      if (formValue.jobType === 'sql') {
+      if (formValue.jobType == JobTypeEnum.SQL) {
         if (formValue.flinkSql == null || formValue.flinkSql.trim() === '') {
           createMessage.warning(t('flink.app.editStreamPark.flinkSqlRequired'));
         } else {
@@ -253,11 +273,9 @@
             throw new Error(access);
           }
         }
-      }
-      if (formValue.jobType === 'customcode') {
-        handleSubmitCustomJob(formValue);
-      } else {
         handleSubmitSQL(formValue);
+      } else {
+        handleSubmitCustomJob(formValue);
       }
     } catch (error) {
       submitLoading.value = false;
@@ -314,7 +332,6 @@
         <SettingTwoTone
           v-if="model[field]"
           class="ml-10px"
-          theme="twoTone"
           two-tone-color="#4a9ff5"
           @click="handleSQLConf(true, model)"
         />
@@ -327,11 +344,13 @@
         />
       </template>
       <template #args="{ model }">
-        <ProgramArgs
-          v-model:value="model.args"
-          :suggestions="suggestions"
-          @preview="(value) => openReviewDrawer(true, { value, suggestions })"
-        />
+        <template v-if="model.args !== undefined">
+          <ProgramArgs
+            v-model:value="model.args"
+            :suggestions="suggestions"
+            @preview="(value) => openReviewDrawer(true, { value, suggestions })"
+          />
+        </template>
       </template>
       <template #useSysHadoopConf="{ model, field }">
         <UseSysHadoopConf v-model:hadoopConf="model[field]" />

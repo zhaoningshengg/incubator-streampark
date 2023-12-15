@@ -17,7 +17,7 @@
 
 package org.apache.streampark.flink.packer.pipeline.impl
 
-import org.apache.streampark.common.enums.DevelopmentMode
+import org.apache.streampark.common.enums.FlinkDevelopmentMode
 import org.apache.streampark.common.fs.LfsOperator
 import org.apache.streampark.common.util.ThreadUtils
 import org.apache.streampark.flink.kubernetes.PodTemplateTool
@@ -42,7 +42,7 @@ import scala.language.postfixOps
 class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
   extends BuildPipeline {
 
-  override def pipeType: PipelineType = PipelineType.FLINK_NATIVE_K8S_APPLICATION
+  override def pipeType: PipelineTypeEnum = PipelineTypeEnum.FLINK_NATIVE_K8S_APPLICATION
 
   private var dockerProcessWatcher: DockerProgressWatcher = new SilentDockerProgressWatcher
 
@@ -67,7 +67,7 @@ class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
       execStep(1) {
         val buildWorkspace = s"${request.workspace}/${request.clusterId}@${request.k8sNamespace}"
         LfsOperator.mkCleanDirs(buildWorkspace)
-        logInfo(s"recreate building workspace: $buildWorkspace")
+        logInfo(s"Recreate building workspace: $buildWorkspace")
         buildWorkspace
       }.getOrElse(throw getError.exception)
 
@@ -80,7 +80,7 @@ class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
         execStep(2) {
           val podTemplateFiles =
             PodTemplateTool.preparePodTemplateFiles(buildWorkspace, podTemplate).tmplFiles
-          logInfo(s"export flink podTemplates: ${podTemplateFiles.values.mkString(",")}")
+          logInfo(s"Export flink podTemplates: ${podTemplateFiles.values.mkString(",")}")
           podTemplateFiles
         }.getOrElse(throw getError.exception)
     }
@@ -91,12 +91,12 @@ class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
       execStep(3) {
         val shadedJarOutputPath = request.getShadedJarPath(buildWorkspace)
         val extJarLibs = request.developmentMode match {
-          case DevelopmentMode.FLINK_SQL => request.dependencyInfo.extJarLibs
-          case DevelopmentMode.CUSTOM_CODE => Set[String]()
+          case FlinkDevelopmentMode.FLINK_SQL => request.dependencyInfo.extJarLibs
+          case FlinkDevelopmentMode.CUSTOM_CODE => Set[String]()
         }
         val shadedJar =
           MavenTool.buildFatJar(request.mainClass, request.providedLibs, shadedJarOutputPath)
-        logInfo(s"output shaded flink job jar: ${shadedJar.getAbsolutePath}")
+        logInfo(s"Output shaded flink job jar: ${shadedJar.getAbsolutePath}")
         shadedJar -> extJarLibs
       }.getOrElse(throw getError.exception)
 
@@ -120,14 +120,14 @@ class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
         }
         val dockerFile = dockerFileTemplate.writeDockerfile
         logInfo(
-          s"output flink dockerfile: ${dockerFile.getAbsolutePath}, content: \n${dockerFileTemplate.offerDockerfileContent}")
+          s"Output flink dockerfile: ${dockerFile.getAbsolutePath}, content: \n${dockerFileTemplate.offerDockerfileContent}")
         dockerFile -> dockerFileTemplate
       }.getOrElse(throw getError.exception)
 
     val dockerConf = request.dockerConfig
     val baseImageTag = request.flinkBaseImage.trim
     val pushImageTag = {
-      val expectedImageTag = s"streamparkflinkjob-${request.k8sNamespace}-${request.clusterId}"
+      val expectedImageTag = s"streampark flinkjob-${request.k8sNamespace}-${request.clusterId}"
       compileTag(expectedImageTag, dockerConf.registerAddress, dockerConf.imageNamespace)
     }
 
@@ -155,8 +155,8 @@ class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
                 Future(dockerProcessWatcher.onDockerPullProgressChange(dockerProcess.pull.snapshot))
             })
           pullCmdCallback.awaitCompletion
-          logInfo(s"already pulled docker image from remote register, imageTag=$baseImageTag")
-      }(err => throw new Exception(s"pull docker image failed, imageTag=$baseImageTag", err))
+          logInfo(s"Already pulled docker image from remote register, imageTag=$baseImageTag")
+      }(err => throw new Exception(s"Pull docker image failed, imageTag=$baseImageTag", err))
     }.getOrElse(throw getError.exception)
 
     // Step-6: build flink image
@@ -178,8 +178,8 @@ class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
                   dockerProcessWatcher.onDockerBuildProgressChange(dockerProcess.build.snapshot))
             })
           val imageId = buildCmdCallback.awaitImageId
-          logInfo(s"built docker image, imageId=$imageId, imageTag=$pushImageTag")
-      }(err => throw new Exception(s"build docker image failed. tag=$pushImageTag", err))
+          logInfo(s"Built docker image, imageId=$imageId, imageTag=$pushImageTag")
+      }(err => throw new Exception(s"Build docker image failed. tag=$pushImageTag", err))
     }.getOrElse(throw getError.exception)
 
     // Step-7: push flink image
@@ -198,8 +198,8 @@ class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
                 Future(dockerProcessWatcher.onDockerPushProgressChange(dockerProcess.push.snapshot))
             })
           pushCmdCallback.awaitCompletion
-          logInfo(s"already pushed docker image, imageTag=$pushImageTag")
-      }(err => throw new Exception(s"push docker image failed. tag=$pushImageTag", err))
+          logInfo(s"Already pushed docker image, imageTag=$pushImageTag")
+      }(err => throw new Exception(s"Push docker image failed. tag=$pushImageTag", err))
     }.getOrElse(throw getError.exception)
 
     // Step-8:  init build workspace of ingress
@@ -211,7 +211,7 @@ class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
         execStep(8) {
           val ingressOutputPath =
             IngressController.prepareIngressTemplateFiles(buildWorkspace, request.ingressTemplate)
-          logInfo(s"export flink ingress: $ingressOutputPath")
+          logInfo(s"Export flink ingress: $ingressOutputPath")
           ingressOutputPath
         }.getOrElse(throw getError.exception)
     }
@@ -229,9 +229,7 @@ class FlinkK8sApplicationBuildPipeline(request: FlinkK8sApplicationBuildRequest)
       registerAddress: String,
       imageNamespace: String): String = {
     var tagName = if (tag.contains("/")) tag else s"$imageNamespace/$tag"
-    if (
-      registerAddress != null && registerAddress.nonEmpty && !tagName.startsWith(registerAddress)
-    ) {
+    if (StringUtils.isNotBlank(registerAddress) && !tagName.startsWith(registerAddress)) {
       tagName = s"$registerAddress/$tagName"
     }
     tagName.toLowerCase

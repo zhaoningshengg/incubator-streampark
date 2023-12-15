@@ -1,24 +1,8 @@
-<!--
-  Licensed to the Apache Software Foundation (ASF) under one or more
-  contributor license agreements.  See the NOTICE file distributed with
-  this work for additional information regarding copyright ownership.
-  The ASF licenses this file to You under the Apache License, Version 2.0
-  (the "License"); you may not use this file except in compliance with
-  the License.  You may obtain a copy of the License at
-
-      https://www.apache.org/licenses/LICENSE-2.0
-
-  Unless required by applicable law or agreed to in writing, software
-  distributed under the License is distributed on an "AS IS" BASIS,
-  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-  See the License for the specific language governing permissions and
-  limitations under the License.
--->
 <script lang="tsx">
   import type { PropType, Ref } from 'vue';
   import { computed, defineComponent, toRefs, unref } from 'vue';
   import type { FormActionType, FormProps, FormSchema } from '../types/form';
-  import type { ValidationRule } from 'ant-design-vue/lib/form/Form';
+  import type { RuleObject } from 'ant-design-vue/lib/form';
   import type { TableActionType } from '/@/components/Table';
   import { Col, Divider, Form } from 'ant-design-vue';
   import { componentMap } from '../componentMap';
@@ -143,7 +127,7 @@
         return { isShow, isIfShow };
       }
 
-      function handleRules(): ValidationRule[] {
+      function handleRules(): RuleObject[] {
         const {
           rules: defRules = [],
           component,
@@ -154,10 +138,10 @@
         } = props.schema;
 
         if (isFunction(dynamicRules)) {
-          return dynamicRules(unref(getValues)) as ValidationRule[];
+          return dynamicRules(unref(getValues)) as RuleObject[];
         }
 
-        let rules: ValidationRule[] = cloneDeep(defRules) as ValidationRule[];
+        let rules: RuleObject[] = cloneDeep(defRules) as RuleObject[];
         const { rulesMessageJoinLabel: globalRulesMessageJoinLabel } = props.formProps;
 
         const joinLabel = Reflect.has(props.schema, 'rulesMessageJoinLabel')
@@ -349,8 +333,8 @@
             return slot
               ? getSlot(slots, slot, unref(getValues))
               : render
-              ? render(unref(getValues))
-              : renderComponent();
+                ? render(unref(getValues))
+                : renderComponent();
           };
 
           const showSuffix = !!suffix;
@@ -398,8 +382,8 @@
           return colSlot
             ? getSlot(slots, colSlot, values)
             : renderColContent
-            ? renderColContent(values)
-            : renderItem();
+              ? renderColContent(values)
+              : renderItem();
         };
 
         return (

@@ -17,38 +17,44 @@
 
 package org.apache.streampark.common.enums;
 
-import java.io.Serializable;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
 
 /** classloader.resolve-order */
-public enum ResolveOrder implements Serializable {
+public enum ResolveOrder {
+
   /** parent-first */
   PARENT_FIRST("parent-first", 0),
+
   /** child-first */
   CHILD_FIRST("child-first", 1);
 
   private final String name;
 
-  private final Integer value;
+  private final Integer order;
 
-  ResolveOrder(String name, Integer value) {
+  ResolveOrder(@Nonnull String name, @Nonnull Integer order) {
     this.name = name;
-    this.value = value;
+    this.order = order;
   }
 
-  public static ResolveOrder of(Integer value) {
+  @Nullable
+  public static ResolveOrder of(@Nullable Integer value) {
     for (ResolveOrder order : values()) {
-      if (order.value.equals(value)) {
+      if (order.order.equals(value)) {
         return order;
       }
     }
     return null;
   }
 
+  @Nonnull
   public String getName() {
     return name;
   }
 
-  public Integer getValue() {
-    return value;
+  @Nonnull
+  public Integer getOrder() {
+    return order;
   }
 }

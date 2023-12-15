@@ -26,11 +26,11 @@
   import { AppStateEnum, JobTypeEnum, OptionStateEnum, ReleaseStateEnum } from '/@/enums/flinkEnum';
   import { useTimeoutFn } from '@vueuse/core';
   import { Tooltip, Badge, Divider, Tag } from 'ant-design-vue';
-  import { fetchAppRecord } from '/@/api/flink/app/app';
+  import { fetchAppRecord } from '/@/api/flink/app';
   import { useTable } from '/@/components/Table';
   import { PageWrapper } from '/@/components/Page';
   import { BasicTable, TableAction } from '/@/components/Table';
-  import { AppListRecord } from '/@/api/flink/app/app.type';
+  import { AppListRecord } from '/@/api/flink/app.type';
   import { getAppColumns, releaseTitleMap } from './data';
   import { handleView } from './utils';
   import { useDrawer } from '/@/components/Drawer';
@@ -199,9 +199,11 @@
     <BasicTable @register="registerTable" class="app_list !px-0 pt-20px" :formConfig="formConfig">
       <template #bodyCell="{ column, record }">
         <template v-if="column.dataIndex === 'jobName'">
-          <span class="app_type app_jar" v-if="record['jobType'] === JobTypeEnum.JAR"> JAR </span>
-          <span class="app_type app_sql" v-if="record['jobType'] === JobTypeEnum.SQL"> SQL </span>
-
+          <span class="app_type app_jar" v-if="record['jobType'] == JobTypeEnum.JAR"> JAR </span>
+          <span class="app_type app_sql" v-if="record['jobType'] == JobTypeEnum.SQL"> SQL </span>
+          <span class="app_type app_py" v-if="record['jobType'] == JobTypeEnum.PYFLINK">
+            PyFlink
+          </span>
           <span
             class="link"
             :class="{
@@ -214,7 +216,7 @@
             <Tooltip :title="record.description"> {{ record.jobName }} </Tooltip>
           </span>
 
-          <template v-if="record['jobType'] === JobTypeEnum.JAR">
+          <template v-if="record['jobType'] == JobTypeEnum.JAR">
             <Badge
               v-if="record.release === ReleaseStateEnum.NEED_CHECK"
               class="build-badge"

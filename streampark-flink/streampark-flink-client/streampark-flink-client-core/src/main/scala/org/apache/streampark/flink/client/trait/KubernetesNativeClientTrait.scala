@@ -17,8 +17,9 @@
 
 package org.apache.streampark.flink.client.`trait`
 
-import org.apache.streampark.common.enums.{ExecutionMode, FlinkK8sRestExposedType}
+import org.apache.streampark.common.enums.{FlinkExecutionMode, FlinkK8sRestExposedType}
 import org.apache.streampark.flink.client.bean._
+import org.apache.streampark.flink.kubernetes.PodTemplateTool
 import org.apache.streampark.flink.packer.pipeline.DockerImageBuildResponse
 
 import org.apache.commons.lang3.StringUtils
@@ -44,17 +45,20 @@ trait KubernetesNativeClientTrait extends FlinkClientTrait {
       .safeSet(KubernetesConfigOptions.NAMESPACE, submitRequest.k8sSubmitParam.kubernetesNamespace)
       .safeSet(
         KubernetesConfigOptions.REST_SERVICE_EXPOSED_TYPE,
-        covertToServiceExposedType(submitRequest.k8sSubmitParam.flinkRestExposedType))
+        covertToServiceExposedType(submitRequest.k8sSubmitParam.flinkRestExposedType.get))
 
     if (submitRequest.buildResult != null) {
-      if (submitRequest.executionMode == ExecutionMode.KUBERNETES_NATIVE_APPLICATION) {
+      if (submitRequest.executionMode == FlinkExecutionMode.KUBERNETES_NATIVE_APPLICATION) {
         val buildResult = submitRequest.buildResult.asInstanceOf[DockerImageBuildResponse]
         buildResult.podTemplatePaths.foreach(
           p => {
-            flinkConfig
-              .safeSet(KubernetesConfigOptions.KUBERNETES_POD_TEMPLATE, p._2)
-              .safeSet(KubernetesConfigOptions.JOB_MANAGER_POD_TEMPLATE, p._2)
-              .safeSet(KubernetesConfigOptions.TASK_MANAGER_POD_TEMPLATE, p._2)
+            if (PodTemplateTool.KUBERNETES_POD_TEMPLATE.key.equals(p._1)) {
+              flinkConfig.safeSet(KubernetesConfigOptions.KUBERNETES_POD_TEMPLATE, p._2)
+            } else if (PodTemplateTool.KUBERNETES_JM_POD_TEMPLATE.key.equals(p._1)) {
+              flinkConfig.safeSet(KubernetesConfigOptions.JOB_MANAGER_POD_TEMPLATE, p._2)
+            } else if (PodTemplateTool.KUBERNETES_TM_POD_TEMPLATE.key.equals(p._1)) {
+              flinkConfig.safeSet(KubernetesConfigOptions.TASK_MANAGER_POD_TEMPLATE, p._2)
+            }
           })
       }
     }
@@ -125,15 +129,16 @@ trait KubernetesNativeClientTrait extends FlinkClientTrait {
 
   @throws[Exception]
   override def doTriggerSavepoint(
-      request: TriggerSavepointRequest,
+      savepointRequest: TriggerSavepointRequest,
       flinkConfig: Configuration): SavepointResponse = {
     executeClientAction(
-      request,
+      savepointRequest,
       flinkConfig,
       (jobId, clusterClient) => {
-        val actionResult = super.triggerSavepoint(request, jobId, clusterClient)
+        val actionResult = super.triggerSavepoint(savepointRequest, jobId, clusterClient)
         SavepointResponse(actionResult)
-      })
+      }
+    )
   }
 
   // noinspection DuplicatedCode

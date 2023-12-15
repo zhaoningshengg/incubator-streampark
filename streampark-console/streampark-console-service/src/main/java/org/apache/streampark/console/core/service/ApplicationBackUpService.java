@@ -26,21 +26,61 @@ import org.apache.streampark.console.core.entity.FlinkSql;
 import com.baomidou.mybatisplus.core.metadata.IPage;
 import com.baomidou.mybatisplus.extension.service.IService;
 
+/** Interface representing a service for application backup operations. */
 public interface ApplicationBackUpService extends IService<ApplicationBackUp> {
 
-  Boolean delete(Long id) throws InternalException;
+  /**
+   * Deletes an object specified by the given ID.
+   *
+   * @param id The ID of the object to delete.
+   * @return true if the object was successfully deleted, false otherwise.
+   * @throws InternalException if an internal error occurs during the deletion process.
+   */
+  Boolean removeById(Long id) throws InternalException;
 
-  void backup(Application application, FlinkSql flinkSql);
+  /**
+   * Performs a backup for the given application and Flink SQL parameters.
+   *
+   * @param appParam The application to back up.
+   * @param flinkSqlParam The Flink SQL to back up.
+   */
+  void backup(Application appParam, FlinkSql flinkSqlParam);
 
-  IPage<ApplicationBackUp> page(ApplicationBackUp backUp, RestRequest request);
+  /**
+   * Retrieves a page of {@link ApplicationBackUp} objects based on the provided parameters.
+   *
+   * @param bakParam The {@link ApplicationBackUp} object containing the search criteria.
+   * @param request The {@link RestRequest} object used for pagination and sorting.
+   * @return An {@link IPage} containing the retrieved {@link ApplicationBackUp} objects.
+   */
+  IPage<ApplicationBackUp> getPage(ApplicationBackUp bakParam, RestRequest request);
 
-  void rollback(ApplicationBackUp backUp);
+  /**
+   * Rolls back the changes made by the specified application backup.
+   *
+   * @param bakParam The ApplicationBackUp object representing the backup to roll back.
+   */
+  void rollback(ApplicationBackUp bakParam);
 
-  void revoke(Application application);
+  /**
+   * Revoke the given application.
+   *
+   * @param appParam The application to be revoked.
+   */
+  void revoke(Application appParam);
 
-  void removeApp(Application application);
+  /**
+   * Removes the specified application.
+   *
+   * @param appParam the application to be removed
+   */
+  void remove(Application appParam);
 
-  void rollbackFlinkSql(Application application, FlinkSql sql);
-
-  boolean isFlinkSqlBacked(Long appId, Long sqlId);
+  /**
+   * Rolls back a Flink SQL application to its previous state.
+   *
+   * @param appParam The application to rollback.
+   * @param flinkSqlParam The Flink SQL instance associated with the application.
+   */
+  void rollbackFlinkSql(Application appParam, FlinkSql flinkSqlParam);
 }

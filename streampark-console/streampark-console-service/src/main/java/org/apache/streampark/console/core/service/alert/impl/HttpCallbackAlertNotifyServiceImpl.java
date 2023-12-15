@@ -74,7 +74,7 @@ public class HttpCallbackAlertNotifyServiceImpl implements AlertNotifyService {
     }
   }
 
-  private Object sendMessage(AlertHttpCallbackParams params, Map<String, Object> body)
+  private void sendMessage(AlertHttpCallbackParams params, Map<String, Object> body)
       throws AlertException {
     String url = params.getUrl();
     HttpHeaders headers = new HttpHeaders();
@@ -112,13 +112,11 @@ public class HttpCallbackAlertNotifyServiceImpl implements AlertNotifyService {
     } catch (Exception e) {
       log.error("Failed to request httpCallback alert,\nurl:{}", url, e);
       throw new AlertException(
-          String.format("Failed to request httpCallback alert,\nurl:%s", url), e);
+          String.format("Failed to request httpCallback alert,%nurl:%s", url), e);
     }
 
     if (response == null) {
-      throw new AlertException(String.format("Failed to request httpCallback alert,\nurl:%s", url));
+      throw new AlertException(String.format("Failed to request httpCallback alert,%nurl:%s", url));
     }
-
-    return response;
   }
 }

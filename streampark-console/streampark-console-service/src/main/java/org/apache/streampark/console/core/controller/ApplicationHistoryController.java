@@ -17,9 +17,9 @@
 
 package org.apache.streampark.console.core.controller;
 
-import org.apache.streampark.common.enums.ExecutionMode;
+import org.apache.streampark.common.enums.FlinkExecutionMode;
 import org.apache.streampark.console.base.domain.RestResponse;
-import org.apache.streampark.console.core.service.ApplicationService;
+import org.apache.streampark.console.core.service.application.ApplicationInfoService;
 
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 
@@ -42,13 +42,13 @@ import java.util.List;
 @RequestMapping("flink/history")
 public class ApplicationHistoryController {
 
-  @Autowired private ApplicationService applicationService;
+  @Autowired private ApplicationInfoService applicationInfoService;
 
   @Operation(summary = "List the upload jar history records")
   @PostMapping("uploadJars")
   @RequiresPermissions("app:create")
   public RestResponse listUploadJars() {
-    List<String> jars = applicationService.historyUploadJars();
+    List<String> jars = applicationInfoService.listHistoryUploadJars();
     return RestResponse.success(jars);
   }
 
@@ -56,7 +56,7 @@ public class ApplicationHistoryController {
   @PostMapping("k8sNamespaces")
   @RequiresPermissions("app:create")
   public RestResponse listK8sNamespace() {
-    List<String> namespaces = applicationService.getRecentK8sNamespace();
+    List<String> namespaces = applicationInfoService.listRecentK8sNamespace();
     return RestResponse.success(namespaces);
   }
 
@@ -65,11 +65,11 @@ public class ApplicationHistoryController {
   @RequiresPermissions("app:create")
   public RestResponse listSessionClusterId(int executionMode) {
     List<String> clusterIds;
-    switch (ExecutionMode.of(executionMode)) {
+    switch (FlinkExecutionMode.of(executionMode)) {
       case KUBERNETES_NATIVE_SESSION:
       case YARN_SESSION:
       case REMOTE:
-        clusterIds = applicationService.getRecentK8sClusterId(executionMode);
+        clusterIds = applicationInfoService.listRecentK8sClusterId(executionMode);
         break;
       default:
         clusterIds = new ArrayList<>(0);
@@ -82,7 +82,7 @@ public class ApplicationHistoryController {
   @PostMapping("flinkBaseImages")
   @RequiresPermissions("app:create")
   public RestResponse listFlinkBaseImage() {
-    List<String> images = applicationService.getRecentFlinkBaseImage();
+    List<String> images = applicationInfoService.listRecentFlinkBaseImage();
     return RestResponse.success(images);
   }
 
@@ -90,7 +90,7 @@ public class ApplicationHistoryController {
   @PostMapping("flinkPodTemplates")
   @RequiresPermissions("app:create")
   public RestResponse listPodTemplate() {
-    List<String> templates = applicationService.getRecentK8sPodTemplate();
+    List<String> templates = applicationInfoService.listRecentK8sPodTemplate();
     return RestResponse.success(templates);
   }
 
@@ -98,7 +98,7 @@ public class ApplicationHistoryController {
   @PostMapping("flinkJmPodTemplates")
   @RequiresPermissions("app:create")
   public RestResponse listJmPodTemplate() {
-    List<String> templates = applicationService.getRecentK8sJmPodTemplate();
+    List<String> templates = applicationInfoService.listRecentK8sJmPodTemplate();
     return RestResponse.success(templates);
   }
 
@@ -106,7 +106,7 @@ public class ApplicationHistoryController {
   @PostMapping("flinkTmPodTemplates")
   @RequiresPermissions("app:create")
   public RestResponse listTmPodTemplate() {
-    List<String> templates = applicationService.getRecentK8sTmPodTemplate();
+    List<String> templates = applicationInfoService.listRecentK8sTmPodTemplate();
     return RestResponse.success(templates);
   }
 }

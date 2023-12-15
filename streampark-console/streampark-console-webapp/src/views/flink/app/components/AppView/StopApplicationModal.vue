@@ -27,8 +27,8 @@
   import { SvgIcon } from '/@/components/Icon';
   import { BasicModal, useModalInner } from '/@/components/Modal';
   import { useMessage } from '/@/hooks/web/useMessage';
-  import { fetchCancel, fetchCheckSavepointPath } from '/@/api/flink/app/app';
-  import { CancelParam } from '/@/api/flink/app/app.type';
+  import { fetchCancel, fetchCheckSavepointPath } from '/@/api/flink/app';
+  import { CancelParam } from '/@/api/flink/app.type';
   import { h } from 'vue';
   const emit = defineEmits(['register', 'updateOption']);
   const app = reactive<Recordable>({});
@@ -76,7 +76,12 @@
           unCheckedChildren: 'OFF',
         },
         defaultValue: false,
-        afterItem: () => h('span', { class: 'conf-switch' }, 'Note: native format savepoint is supported since flink 1.15'),
+        afterItem: () =>
+          h(
+            'span',
+            { class: 'tip-info' },
+            'Note: native format savepoint is supported since flink 1.15',
+          ),
         ifShow: ({ values }) => !!values.stopSavePointed,
       },
       {
@@ -101,7 +106,8 @@
   /* submit */
   async function handleSubmit() {
     try {
-      const { stopSavePointed, customSavepoint, drain, nativeFormat } = (await validate()) as Recordable;
+      const { stopSavePointed, customSavepoint, drain, nativeFormat } =
+        (await validate()) as Recordable;
       const stopReq = {
         id: app.id,
         savePointed: stopSavePointed,

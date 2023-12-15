@@ -18,6 +18,7 @@
 package org.apache.streampark.console.system.controller;
 
 import org.apache.streampark.console.base.domain.RestResponse;
+import org.apache.streampark.console.core.enums.LoginTypeEnum;
 import org.apache.streampark.console.system.entity.User;
 import org.apache.streampark.console.system.security.Authenticator;
 import org.apache.streampark.console.system.service.UserService;
@@ -61,12 +62,12 @@ public class PassportController {
   @PostMapping("signtype")
   public RestResponse type() {
     List<String> types = new ArrayList<>();
-    types.add("password");
+    types.add(LoginTypeEnum.PASSWORD.name().toLowerCase());
     if (ssoEnable) {
-      types.add("sso");
+      types.add(LoginTypeEnum.SSO.name().toLowerCase());
     }
     if (ldapEnable) {
-      types.add("ldap");
+      types.add(LoginTypeEnum.LDAP.name().toLowerCase());
     }
     return RestResponse.success(types);
   }
@@ -79,7 +80,7 @@ public class PassportController {
       @NotBlank(message = "{required}") String loginType)
       throws Exception {
 
-    if (StringUtils.isEmpty(username)) {
+    if (StringUtils.isBlank(username)) {
       return RestResponse.success().put(RestResponse.CODE_KEY, 0);
     }
     User user = authenticator.authenticate(username, password, loginType);

@@ -26,8 +26,10 @@ import org.apache.streampark.console.base.exception.ApiAlertException;
 import org.apache.streampark.console.base.properties.ShiroProperties;
 import org.apache.streampark.console.base.util.ShaHashUtils;
 import org.apache.streampark.console.base.util.WebUtils;
-import org.apache.streampark.console.core.service.ApplicationService;
+import org.apache.streampark.console.core.enums.LoginTypeEnum;
 import org.apache.streampark.console.core.service.ResourceService;
+import org.apache.streampark.console.core.service.application.ApplicationInfoService;
+import org.apache.streampark.console.core.service.application.ApplicationManageService;
 import org.apache.streampark.console.system.authentication.JWTToken;
 import org.apache.streampark.console.system.authentication.JWTUtil;
 import org.apache.streampark.console.system.entity.Team;
@@ -71,25 +73,27 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
   @Autowired private MenuService menuService;
 
-  @Autowired private ApplicationService applicationService;
+  @Autowired private ApplicationManageService applicationManageService;
+
+  @Autowired private ApplicationInfoService applicationInfoService;
 
   @Autowired private ResourceService resourceService;
 
   @Autowired private ShiroProperties shiroProperties;
 
   @Override
-  public User findByName(String username) {
+  public User getByUsername(String username) {
     LambdaQueryWrapper<User> queryWrapper =
         new LambdaQueryWrapper<User>().eq(User::getUsername, username);
     return baseMapper.selectOne(queryWrapper);
   }
 
   @Override
-  public IPage<User> findUserDetail(User user, RestRequest request) {
+  public IPage<User> getPage(User user, RestRequest request) {
     Page<User> page = new Page<>();
     page.setCurrent(request.getPageNum());
     page.setSize(request.getPageSize());
-    IPage<User> resPage = this.baseMapper.findUserDetail(page, user);
+    IPage<User> resPage = this.baseMapper.selectPage(page, user);
 
     Utils.notNull(resPage);
     if (resPage.getTotal() == 0) {
@@ -99,7 +103,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
   }
 
   @Override
-  @Transactional(rollbackFor = Exception.class)
   public void updateLoginTime(String username) {
     User user = new User();
     user.setLastLoginTime(new Date());
@@ -109,7 +112,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
   }
 
   @Override
-  @Transactional(rollbackFor = Exception.class)
   public void createUser(User user) {
     user.setCreateTime(new Date());
     if (StringUtils.isNoneBlank(user.getPassword())) {
@@ -122,9 +124,9 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
   }
 
   @Override
-  @Transactional(rollbackFor = Exception.class)
   public RestResponse updateUser(User user) {
     User existsUser = getById(user.getUserId());
+    user.setLoginType(null);
     user.setPassword(null);
     user.setModifyTime(new Date());
     if (needTransferResource(existsUser, user)) {
@@ -139,15 +141,17 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
         || User.STATUS_VALID.equals(user.getStatus())) {
       return false;
     }
-    return applicationService.existsByUserId(user.getUserId())
+    return applicationInfoService.existsByUserId(user.getUserId())
         || resourceService.existsByUserId(user.getUserId());
   }
 
   @Override
-  @Transactional(rollbackFor = Exception.class)
   public void updatePassword(User userParam) {
     User user = getById(userParam.getUserId());
     ApiAlertException.throwIfNull(user, "User is null. Update password failed.");
+    ApiAlertException.throwIfFalse(
+        user.getLoginType() == LoginTypeEnum.PASSWORD,
+        "Can only update password for user who sign in with PASSWORD");
 
     String saltPassword = ShaHashUtils.encrypt(user.getSalt(), userParam.getOldPassword());
     ApiAlertException.throwIfFalse(
@@ -162,17 +166,6 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
   }
 
   @Override
-  @Transactional(rollbackFor = Exception.class)
-  public void updateSaltPassword(User userParam) {
-    User user = getById(userParam.getUserId());
-    ApiAlertException.throwIfNull(user, "User is null. Update password failed.");
-    user.setSalt(userParam.getSalt());
-    user.setPassword(userParam.getPassword());
-    this.baseMapper.updateById(user);
-  }
-
-  @Override
-  @Transactional(rollbackFor = Exception.class)
   public String resetPassword(String username) {
     User user = new User();
     String salt = ShaHashUtils.getRandomSalt();
@@ -187,14 +180,14 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
   }
 
   @Override
-  public Set<String> getPermissions(Long userId, @Nullable Long teamId) {
-    List<String> userPermissions = this.menuService.findUserPermissions(userId, teamId);
+  public Set<String> listPermissions(Long userId, @Nullable Long teamId) {
+    List<String> userPermissions = this.menuService.listPermissions(userId, teamId);
     return new HashSet<>(userPermissions);
   }
 
   @Override
-  public List<User> getNoTokenUser() {
-    List<User> users = this.baseMapper.getNoTokenUser();
+  public List<User> listNoTokenUser() {
+    List<User> users = this.baseMapper.selectNoTokenUsers();
     if (!users.isEmpty()) {
       users.forEach(User::dataMasking);
     }
@@ -227,11 +220,13 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
   @Override
   public void fillInTeam(User user) {
     if (user.getLastTeamId() == null) {
-      List<Team> teams = memberService.findUserTeams(user.getUserId());
-      if (CollectionUtils.isEmpty(teams)) {
-        throw new ApiAlertException(
-            "The current user not belong to any team, please contact the administrator!");
-      } else if (teams.size() == 1) {
+      List<Team> teams = memberService.listTeamsByUserId(user.getUserId());
+
+      ApiAlertException.throwIfTrue(
+          CollectionUtils.isEmpty(teams),
+          "The current user does not belong to any team, please contact the administrator!");
+
+      if (teams.size() == 1) {
         Team team = teams.get(0);
         user.setLastTeamId(team.getId());
         this.baseMapper.updateById(user);
@@ -240,8 +235,8 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
   }
 
   @Override
-  public List<User> findByAppOwner(Long teamId) {
-    return baseMapper.findByAppOwner(teamId);
+  public List<User> listByTeamId(Long teamId) {
+    return baseMapper.selectUsersByAppOwner(teamId);
   }
 
   /**
@@ -266,16 +261,15 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
     userInfo.put("user", user);
 
     // 3) permissions
-    Set<String> permissions = this.getPermissions(user.getUserId(), teamId);
+    Set<String> permissions = this.listPermissions(user.getUserId(), teamId);
     userInfo.put("permissions", permissions);
 
     return userInfo;
   }
 
   @Override
-  @Transactional(rollbackFor = Exception.class)
   public void transferResource(Long userId, Long targetUserId) {
-    applicationService.changeOwnership(userId, targetUserId);
+    applicationManageService.changeOwnership(userId, targetUserId);
     resourceService.changeOwnership(userId, targetUserId);
   }
 

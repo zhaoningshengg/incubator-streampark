@@ -17,7 +17,7 @@
 
 package org.apache.streampark.console.core.utils;
 
-import org.apache.streampark.common.conf.ConfigConst;
+import org.apache.streampark.common.conf.ConfigKeys;
 import org.apache.streampark.console.base.exception.ApiAlertException;
 
 import org.apache.commons.lang3.StringUtils;
@@ -53,7 +53,7 @@ public class YarnQueueLabelExpression {
   private @Nullable final String labelExpression;
 
   private YarnQueueLabelExpression(String queue, String labelExpression) {
-    this.labelExpression = StringUtils.isEmpty(labelExpression) ? null : labelExpression;
+    this.labelExpression = StringUtils.isBlank(labelExpression) ? null : labelExpression;
     this.queue = queue;
   }
 
@@ -67,13 +67,13 @@ public class YarnQueueLabelExpression {
 
   @Override
   public String toString() {
-    return StringUtils.isEmpty(labelExpression)
+    return StringUtils.isBlank(labelExpression)
         ? queue
         : String.format(QUEUE_LABEL_FORMAT, queue, labelExpression);
   }
 
   public static boolean isValid(String queueLabel, boolean ignoreEmpty) {
-    if (StringUtils.isEmpty(queueLabel)) {
+    if (StringUtils.isBlank(queueLabel)) {
       return ignoreEmpty;
     }
     return QUEUE_LABEL_PATTERN.matcher(queueLabel).matches();
@@ -104,15 +104,15 @@ public class YarnQueueLabelExpression {
   }
 
   public static Map<String, String> getQueueLabelMap(String queueLabelExp) {
-    if (StringUtils.isEmpty(queueLabelExp)) {
+    if (StringUtils.isBlank(queueLabelExp)) {
       return Collections.emptyMap();
     }
     YarnQueueLabelExpression yarnQueueLabelExpression = of(queueLabelExp);
-    Map<String, String> map = new HashMap<>(2);
+    Map<String, String> queueLabelMap = new HashMap<>(2);
     yarnQueueLabelExpression
         .getLabelExpression()
-        .ifPresent(labelExp -> map.put(ConfigConst.KEY_YARN_APP_NODE_LABEL(), labelExp));
-    map.put(ConfigConst.KEY_YARN_APP_QUEUE(), yarnQueueLabelExpression.queue);
-    return map;
+        .ifPresent(labelExp -> queueLabelMap.put(ConfigKeys.KEY_YARN_APP_NODE_LABEL(), labelExp));
+    queueLabelMap.put(ConfigKeys.KEY_YARN_APP_QUEUE(), yarnQueueLabelExpression.queue);
+    return queueLabelMap;
   }
 }

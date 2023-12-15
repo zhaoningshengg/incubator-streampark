@@ -1,20 +1,3 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one or more
- * contributor license agreements.  See the NOTICE file distributed with
- * this work for additional information regarding copyright ownership.
- * The ASF licenses this file to You under the Apache License, Version 2.0
- * (the "License"); you may not use this file except in compliance with
- * the License.  You may obtain a copy of the License at
- *
- *    https://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 export enum BuildStateEnum {
   /** has changed, need rebuild */
   NEED_REBUILD = -2,
@@ -133,6 +116,8 @@ export enum AppStateEnum {
   /** job SUCCEEDED on yarn */
   SUCCEEDED = 20,
   /** has killed in Yarn */
+  PROBING = 21,
+  /** Job auto Health probe */
   KILLED = -9,
 }
 
@@ -167,6 +152,7 @@ export enum AppTypeEnum {
 export enum JobTypeEnum {
   JAR = 1,
   SQL = 2,
+  PYFLINK = 3,
 }
 
 export enum ConfigTypeEnum {
@@ -190,8 +176,8 @@ export enum CandidateTypeEnum {
 }
 
 export enum ResourceFromEnum {
-  /** cicd(build from cvs) */
-  CICD = 1,
+  /** from PROJECT */
+  PROJECT = 1,
   /** upload local jar */
   UPLOAD = 2,
 }

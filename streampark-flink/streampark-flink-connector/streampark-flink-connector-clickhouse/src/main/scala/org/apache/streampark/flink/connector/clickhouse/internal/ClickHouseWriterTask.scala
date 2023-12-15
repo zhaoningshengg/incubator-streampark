@@ -21,7 +21,7 @@ import org.apache.streampark.common.util.Logger
 import org.apache.streampark.flink.connector.clickhouse.conf.ClickHouseHttpConfig
 import org.apache.streampark.flink.connector.failover.{FailoverWriter, SinkRequest}
 
-import io.netty.handler.codec.http.{HttpHeaderNames, HttpHeaders}
+import io.netty.handler.codec.http.HttpHeaderNames
 import org.asynchttpclient.{AsyncHttpClient, ListenableFuture, Request, Response}
 
 import java.util.concurrent.{BlockingQueue, ExecutorService, TimeUnit}
@@ -63,24 +63,38 @@ case class ClickHouseWriterTask(
     }
 
   def send(sinkRequest: SinkRequest): Unit = {
-    val request = buildRequest(sinkRequest)
-    logDebug(s"Ready to load data to ${sinkRequest.table}, size: ${sinkRequest.size}")
-    val whenResponse = asyncHttpClient.executeRequest(request)
-    val callback = respCallback(whenResponse, sinkRequest)
-    whenResponse.addListener(callback, callbackService)
+    // ClickHouse's http API does not accept EMPTY request body
+    if (sinkRequest.sqlStatement == null || sinkRequest.sqlStatement.isEmpty) {
+      logWarn(s"Skip empty sql statement")
+      return
+    }
+
+    val requests = buildRequest(sinkRequest)
+    requests.foreach(
+      request => {
+        logDebug(s"Ready to fire request: $request")
+        val whenResponse = asyncHttpClient.executeRequest(request)
+        val callback = respCallback(whenResponse, sinkRequest)
+        whenResponse.addListener(callback, callbackService)
+      })
   }
 
-  def buildRequest(sinkRequest: SinkRequest): Request = {
-    val host = clickHouseConf.getRandomHostUrl
-    val builder = asyncHttpClient
-      .preparePost(host)
-      .setRequestTimeout(clickHouseConf.timeout)
-      .setHeader(HttpHeaderNames.CONTENT_TYPE, "text/plain; charset=utf-8")
-      .setBody(sinkRequest.sqlStatement)
-    if (clickHouseConf.credentials != null) {
-      builder.setHeader(HttpHeaderNames.AUTHORIZATION, "Basic " + clickHouseConf.credentials)
-    }
-    builder.build
+  private def buildRequest(sinkRequest: SinkRequest): List[Request] = {
+    logDebug(s"There is [${sinkRequest.sqlStatement.size}] statement(s) in SinkRequest ")
+    // ClickHouse's http API does not accept multiple statements, so requests should be built by splitting statements
+    sinkRequest.sqlStatement.filter(_.nonEmpty).map(
+      statement => {
+        val host = clickHouseConf.getRandomHostUrl
+        val builder = asyncHttpClient
+          .preparePost(host)
+          .setRequestTimeout(clickHouseConf.timeout)
+          .setHeader(HttpHeaderNames.CONTENT_TYPE, "text/plain; charset=utf-8")
+          .setBody(statement)
+        if (clickHouseConf.credentials != null) {
+          builder.setHeader(HttpHeaderNames.AUTHORIZATION, "Basic " + clickHouseConf.credentials)
+        }
+        builder.build
+      })
   }
 
   def respCallback(whenResponse: ListenableFuture[Response], sinkRequest: SinkRequest): Runnable =
@@ -113,7 +127,7 @@ case class ClickHouseWriterTask(
         s"""Failed to send data to ClickHouse, cause: limit of attempts is exceeded. ClickHouse response = $response. Ready to flush data to ${clickHouseConf.storageType}""")
       failoverWriter.write(sinkRequest)
       logInfo(
-        s"failover Successful, StorageType = ${clickHouseConf.storageType}, size = ${sinkRequest.size}")
+        s"Failover Successful, StorageType = ${clickHouseConf.storageType}, size = ${sinkRequest.size}")
     } else {
       sinkRequest.incrementCounter()
       logWarn(

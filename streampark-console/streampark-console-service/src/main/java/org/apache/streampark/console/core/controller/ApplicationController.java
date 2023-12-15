@@ -26,18 +26,17 @@ import org.apache.streampark.console.base.exception.InternalException;
 import org.apache.streampark.console.core.annotation.ApiAccess;
 import org.apache.streampark.console.core.annotation.AppUpdated;
 import org.apache.streampark.console.core.annotation.PermissionAction;
-import org.apache.streampark.console.core.bean.AppControl;
 import org.apache.streampark.console.core.entity.Application;
 import org.apache.streampark.console.core.entity.ApplicationBackUp;
 import org.apache.streampark.console.core.entity.ApplicationLog;
-import org.apache.streampark.console.core.enums.AppExistsState;
-import org.apache.streampark.console.core.enums.PermissionType;
-import org.apache.streampark.console.core.service.AppBuildPipeService;
+import org.apache.streampark.console.core.enums.AppExistsStateEnum;
+import org.apache.streampark.console.core.enums.PermissionTypeEnum;
 import org.apache.streampark.console.core.service.ApplicationBackUpService;
 import org.apache.streampark.console.core.service.ApplicationLogService;
-import org.apache.streampark.console.core.service.ApplicationService;
 import org.apache.streampark.console.core.service.ResourceService;
-import org.apache.streampark.flink.packer.pipeline.PipelineStatus;
+import org.apache.streampark.console.core.service.application.ApplicationActionService;
+import org.apache.streampark.console.core.service.application.ApplicationInfoService;
+import org.apache.streampark.console.core.service.application.ApplicationManageService;
 
 import org.apache.shiro.authz.annotation.RequiresPermissions;
 
@@ -61,10 +60,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.Serializable;
 import java.net.URI;
-import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
 
 @Tag(name = "FLINK_APPLICATION_TAG")
 @Slf4j
@@ -73,13 +69,15 @@ import java.util.stream.Collectors;
 @RequestMapping("flink/app")
 public class ApplicationController {
 
-  @Autowired private ApplicationService applicationService;
+  @Autowired private ApplicationManageService applicationManageService;
+
+  @Autowired private ApplicationActionService applicationActionService;
+
+  @Autowired private ApplicationInfoService applicationInfoService;
 
   @Autowired private ApplicationBackUpService backUpService;
 
   @Autowired private ApplicationLogService applicationLogService;
-
-  @Autowired private AppBuildPipeService appBuildPipeService;
 
   @Autowired private ResourceService resourceService;
 
@@ -88,17 +86,17 @@ public class ApplicationController {
   @PostMapping("get")
   @RequiresPermissions("app:detail")
   public RestResponse get(Application app) {
-    Application application = applicationService.getApp(app);
+    Application application = applicationManageService.getApp(app);
     return RestResponse.success(application);
   }
 
   @Operation(summary = "Create application")
   @ApiAccess
-  @PermissionAction(id = "#app.teamId", type = PermissionType.TEAM)
+  @PermissionAction(id = "#app.teamId", type = PermissionTypeEnum.TEAM)
   @PostMapping("create")
   @RequiresPermissions("app:create")
   public RestResponse create(Application app) throws IOException {
-    boolean saved = applicationService.create(app);
+    boolean saved = applicationManageService.create(app);
     return RestResponse.success(saved);
   }
 
@@ -120,33 +118,29 @@ public class ApplicationController {
     @Parameter(name = "args", description = "new application args", in = ParameterIn.QUERY)
   })
   @ApiAccess
-  @PermissionAction(id = "#app.id", type = PermissionType.APP)
+  @PermissionAction(id = "#app.id", type = PermissionTypeEnum.APP)
   @PostMapping(value = "copy")
   @RequiresPermissions("app:copy")
   public RestResponse copy(@Parameter(hidden = true) Application app) throws IOException {
-    Long id = applicationService.copy(app);
-    Map<String, String> data = new HashMap<>();
-    data.put("id", Long.toString(id));
-    return id.equals(0L)
-        ? RestResponse.success(false).data(data)
-        : RestResponse.success(true).data(data);
+    applicationManageService.copy(app);
+    return RestResponse.success();
   }
 
   @Operation(summary = "Update application")
   @AppUpdated
-  @PermissionAction(id = "#app.id", type = PermissionType.APP)
+  @PermissionAction(id = "#app.id", type = PermissionTypeEnum.APP)
   @PostMapping("update")
   @RequiresPermissions("app:update")
   public RestResponse update(Application app) {
-    applicationService.update(app);
+    applicationManageService.update(app);
     return RestResponse.success(true);
   }
 
   @Operation(summary = "Get applications dashboard data")
   @PostMapping("dashboard")
   public RestResponse dashboard(Long teamId) {
-    Map<String, Serializable> map = applicationService.dashboard(teamId);
-    return RestResponse.success(map);
+    Map<String, Serializable> dashboardMap = applicationInfoService.getDashboardDataMap(teamId);
+    return RestResponse.success(dashboardMap);
   }
 
   @Operation(summary = "List applications")
@@ -154,35 +148,7 @@ public class ApplicationController {
   @PostMapping("list")
   @RequiresPermissions("app:view")
   public RestResponse list(Application app, RestRequest request) {
-    IPage<Application> applicationList = applicationService.page(app, request);
-    List<Application> appRecords = applicationList.getRecords();
-    List<Long> appIds = appRecords.stream().map(Application::getId).collect(Collectors.toList());
-    Map<Long, PipelineStatus> pipeStates = appBuildPipeService.listPipelineStatus(appIds);
-
-    // add building pipeline status info and app control info
-    appRecords =
-        appRecords.stream()
-            .peek(
-                e -> {
-                  if (pipeStates.containsKey(e.getId())) {
-                    e.setBuildStatus(pipeStates.get(e.getId()).getCode());
-                  }
-                })
-            .peek(
-                e -> {
-                  AppControl appControl =
-                      new AppControl()
-                          .setAllowBuild(
-                              e.getBuildStatus() == null
-                                  || !PipelineStatus.running.getCode().equals(e.getBuildStatus()))
-                          .setAllowStart(
-                              !e.shouldBeTrack()
-                                  && PipelineStatus.success.getCode().equals(e.getBuildStatus()))
-                          .setAllowStop(e.isRunning());
-                  e.setAppControl(appControl);
-                })
-            .collect(Collectors.toList());
-    applicationList.setRecords(appRecords);
+    IPage<Application> applicationList = applicationManageService.page(app, request);
     return RestResponse.success(applicationList);
   }
 
@@ -191,17 +157,17 @@ public class ApplicationController {
   @PostMapping("mapping")
   @RequiresPermissions("app:mapping")
   public RestResponse mapping(Application app) {
-    boolean flag = applicationService.mapping(app);
+    boolean flag = applicationManageService.mapping(app);
     return RestResponse.success(flag);
   }
 
   @Operation(summary = "Revoke application")
   @AppUpdated
-  @PermissionAction(id = "#app.id", type = PermissionType.APP)
+  @PermissionAction(id = "#app.id", type = PermissionTypeEnum.APP)
   @PostMapping("revoke")
   @RequiresPermissions("app:release")
   public RestResponse revoke(Application app) {
-    applicationService.revoke(app);
+    applicationActionService.revoke(app);
     return RestResponse.success();
   }
 
@@ -236,13 +202,12 @@ public class ApplicationController {
         schema = @Schema(implementation = boolean.class, defaultValue = "false"))
   })
   @ApiAccess
-  @PermissionAction(id = "#app.id", type = PermissionType.APP)
+  @PermissionAction(id = "#app.id", type = PermissionTypeEnum.APP)
   @PostMapping(value = "start")
   @RequiresPermissions("app:start")
   public RestResponse start(@Parameter(hidden = true) Application app) {
     try {
-      applicationService.checkEnv(app);
-      applicationService.start(app, false);
+      applicationActionService.start(app, false);
       return RestResponse.success(true);
     } catch (Exception e) {
       return RestResponse.success(false).message(e.getMessage());
@@ -288,32 +253,32 @@ public class ApplicationController {
         example = "false",
         schema = @Schema(implementation = boolean.class, defaultValue = "false"))
   })
-  @PermissionAction(id = "#app.id", type = PermissionType.APP)
+  @PermissionAction(id = "#app.id", type = PermissionTypeEnum.APP)
   @PostMapping(value = "cancel")
   @RequiresPermissions("app:cancel")
   public RestResponse cancel(@Parameter(hidden = true) Application app) throws Exception {
-    applicationService.cancel(app);
+    applicationActionService.cancel(app);
     return RestResponse.success();
   }
 
   @Operation(summary = "Clean application")
   @AppUpdated
   @ApiAccess
-  @PermissionAction(id = "#app.id", type = PermissionType.APP)
+  @PermissionAction(id = "#app.id", type = PermissionTypeEnum.APP)
   @PostMapping("clean")
   @RequiresPermissions("app:clean")
   public RestResponse clean(Application app) {
-    applicationService.clean(app);
+    applicationManageService.clean(app);
     return RestResponse.success(true);
   }
 
   /** force stop(stop normal start or in progress) */
   @Operation(summary = "Force stop application")
-  @PermissionAction(id = "#app.id", type = PermissionType.APP)
+  @PermissionAction(id = "#app.id", type = PermissionTypeEnum.APP)
   @PostMapping("forcedStop")
   @RequiresPermissions("app:cancel")
   public RestResponse forcedStop(Application app) {
-    applicationService.forcedStop(app);
+    applicationActionService.forcedStop(app);
     return RestResponse.success();
   }
 
@@ -326,68 +291,68 @@ public class ApplicationController {
   @Operation(summary = "Get application on yarn name")
   @PostMapping("name")
   public RestResponse yarnName(Application app) {
-    String yarnName = applicationService.getYarnName(app);
+    String yarnName = applicationInfoService.getYarnName(app);
     return RestResponse.success(yarnName);
   }
 
   @Operation(summary = "Check the application exist status")
   @PostMapping("checkName")
   public RestResponse checkName(Application app) {
-    AppExistsState exists = applicationService.checkExists(app);
+    AppExistsStateEnum exists = applicationInfoService.checkExists(app);
     return RestResponse.success(exists.get());
   }
 
   @Operation(summary = "Get application conf")
   @PostMapping("readConf")
   public RestResponse readConf(Application app) throws IOException {
-    String config = applicationService.readConf(app);
+    String config = applicationInfoService.readConf(app);
     return RestResponse.success(config);
   }
 
   @Operation(summary = "Get application main-class")
   @PostMapping("main")
   public RestResponse getMain(Application application) {
-    String mainClass = applicationService.getMain(application);
+    String mainClass = applicationInfoService.getMain(application);
     return RestResponse.success(mainClass);
   }
 
   @Operation(summary = "List application backups")
   @PostMapping("backups")
   public RestResponse backups(ApplicationBackUp backUp, RestRequest request) {
-    IPage<ApplicationBackUp> backups = backUpService.page(backUp, request);
+    IPage<ApplicationBackUp> backups = backUpService.getPage(backUp, request);
     return RestResponse.success(backups);
   }
 
   @Operation(summary = "List application operation logs")
   @PostMapping("optionlog")
   public RestResponse optionlog(ApplicationLog applicationLog, RestRequest request) {
-    IPage<ApplicationLog> applicationList = applicationLogService.page(applicationLog, request);
+    IPage<ApplicationLog> applicationList = applicationLogService.getPage(applicationLog, request);
     return RestResponse.success(applicationList);
   }
 
   @Operation(summary = "Delete application operation log")
-  @PermissionAction(id = "#applicationLog.appId", type = PermissionType.APP)
+  @PermissionAction(id = "#applicationLog.appId", type = PermissionTypeEnum.APP)
   @PostMapping("deleteOperationLog")
   @RequiresPermissions("app:delete")
-  public RestResponse deleteOperationLog(ApplicationLog applicationLog) {
-    Boolean deleted = applicationLogService.delete(applicationLog);
+  public RestResponse deleteOperationLog(Long id) {
+    Boolean deleted = applicationLogService.removeById(id);
     return RestResponse.success(deleted);
   }
 
   @Operation(summary = "Delete application")
-  @PermissionAction(id = "#app.id", type = PermissionType.APP)
+  @PermissionAction(id = "#app.id", type = PermissionTypeEnum.APP)
   @PostMapping("delete")
   @RequiresPermissions("app:delete")
   public RestResponse delete(Application app) throws InternalException {
-    Boolean deleted = applicationService.delete(app);
+    Boolean deleted = applicationManageService.remove(app);
     return RestResponse.success(deleted);
   }
 
   @Operation(summary = "Backup application when deleted")
-  @PermissionAction(id = "#backUp.appId", type = PermissionType.APP)
+  @PermissionAction(id = "#backUp.appId", type = PermissionTypeEnum.APP)
   @PostMapping("deletebak")
   public RestResponse deleteBak(ApplicationBackUp backUp) throws InternalException {
-    Boolean deleted = backUpService.delete(backUp.getId());
+    Boolean deleted = backUpService.removeById(backUp.getId());
     return RestResponse.success(deleted);
   }
 
@@ -437,12 +402,11 @@ public class ApplicationController {
   @Operation(summary = "Check the application savepoint path")
   @PostMapping("checkSavepointPath")
   public RestResponse checkSavepointPath(Application app) throws Exception {
-    String error = applicationService.checkSavepointPath(app);
+    String error = applicationInfoService.checkSavepointPath(app);
     if (error == null) {
       return RestResponse.success(true);
-    } else {
-      return RestResponse.success(false).message(error);
     }
+    return RestResponse.success(false).message(error);
   }
 
   @Operation(summary = "Get application on k8s deploy logs")
@@ -468,7 +432,7 @@ public class ApplicationController {
   })
   @PostMapping(value = "k8sStartLog")
   public RestResponse k8sStartLog(Long id, Integer offset, Integer limit) throws Exception {
-    String resp = applicationService.k8sStartLog(id, offset, limit);
+    String resp = applicationInfoService.k8sStartLog(id, offset, limit);
     return RestResponse.success(resp);
   }
 }

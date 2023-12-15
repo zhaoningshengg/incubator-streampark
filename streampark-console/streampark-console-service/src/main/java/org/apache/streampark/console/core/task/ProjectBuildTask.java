@@ -17,15 +17,18 @@
 
 package org.apache.streampark.console.core.task;
 
+import org.apache.streampark.common.Constant;
 import org.apache.streampark.common.util.CommandUtils;
 import org.apache.streampark.common.util.Utils;
 import org.apache.streampark.console.base.util.GitUtils;
 import org.apache.streampark.console.core.entity.Project;
-import org.apache.streampark.console.core.enums.BuildState;
+import org.apache.streampark.console.core.enums.BuildStateEnum;
+import org.apache.streampark.console.core.enums.GitCredentialEnum;
 
 import ch.qos.logback.classic.Logger;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.api.errors.InvalidRemoteException;
 import org.eclipse.jgit.lib.StoredConfig;
 
 import java.io.File;
@@ -40,14 +43,14 @@ public class ProjectBuildTask extends AbstractLogFileTask {
 
   final Project project;
 
-  final Consumer<BuildState> stateUpdateConsumer;
+  final Consumer<BuildStateEnum> stateUpdateConsumer;
 
   final Consumer<Logger> notifyReleaseConsumer;
 
   public ProjectBuildTask(
       String logPath,
       Project project,
-      Consumer<BuildState> stateUpdateConsumer,
+      Consumer<BuildStateEnum> stateUpdateConsumer,
       Consumer<Logger> notifyReleaseConsumer) {
     super(logPath, true);
     this.project = project;
@@ -62,23 +65,23 @@ public class ProjectBuildTask extends AbstractLogFileTask {
     boolean cloneSuccess = cloneSourceCode(project);
     if (!cloneSuccess) {
       fileLogger.error("[StreamPark] clone or pull error.");
-      stateUpdateConsumer.accept(BuildState.FAILED);
+      stateUpdateConsumer.accept(BuildStateEnum.FAILED);
       return;
     }
     boolean build = projectBuild(project);
     if (!build) {
-      stateUpdateConsumer.accept(BuildState.FAILED);
+      stateUpdateConsumer.accept(BuildStateEnum.FAILED);
       fileLogger.error("build error, project name: {} ", project.getName());
       return;
     }
-    stateUpdateConsumer.accept(BuildState.SUCCESSFUL);
+    stateUpdateConsumer.accept(BuildStateEnum.SUCCESSFUL);
     this.deploy(project);
     notifyReleaseConsumer.accept(fileLogger);
   }
 
   @Override
   protected void processException(Throwable t) {
-    stateUpdateConsumer.accept(BuildState.FAILED);
+    stateUpdateConsumer.accept(BuildStateEnum.FAILED);
     fileLogger.error("Build error, project name: {}", project.getName(), t);
   }
 
@@ -98,14 +101,29 @@ public class ProjectBuildTask extends AbstractLogFileTask {
       File workTree = git.getRepository().getWorkTree();
       printWorkTree(workTree, "");
       String successMsg =
-          String.format("[StreamPark] project [%s] git clone successful!\n", project.getName());
+          String.format("[StreamPark] project [%s] git clone successful!%n", project.getName());
       fileLogger.info(successMsg);
       git.close();
       return true;
     } catch (Exception e) {
+      if (e instanceof InvalidRemoteException) {
+        GitCredentialEnum gitCredential = GitCredentialEnum.of(project.getGitCredential());
+        if (gitCredential == GitCredentialEnum.HTTPS) {
+          project.setGitCredential(GitCredentialEnum.SSH.getValue());
+          String url =
+              project
+                  .getUrl()
+                  .replaceAll(
+                      "(https://|http://)(.*?)/(.*?)/(.*?)(\\.git|)\\s*$", "git@$2:$3/$4.git");
+          project.setUrl(url);
+          fileLogger.info(
+              "clone project by https(http) failed, Now try to clone project by ssh...");
+          return cloneSourceCode(project);
+        }
+      }
       fileLogger.error(
           String.format(
-              "[StreamPark] project [%s] branch [%s] git clone failure, err: %s",
+              "[StreamPark] project [%s] branch [%s] git clone failed, err: %s",
               project.getName(), project.getBranches(), e));
       fileLogger.error(String.format("project %s clone error ", project.getName()), e);
       return false;
@@ -164,7 +182,7 @@ public class ProjectBuildTask extends AbstractLogFileTask {
       } else {
         // 2) .jar file(normal or official standard flink project)
         Utils.checkJarFile(app.toURI().toURL());
-        String moduleName = app.getName().replace(".jar", "");
+        String moduleName = app.getName().replace(Constant.JAR_SUFFIX, "");
         File distHome = project.getDistHome();
         File targetDir = new File(distHome, moduleName);
         if (!targetDir.exists()) {
@@ -177,43 +195,40 @@ public class ProjectBuildTask extends AbstractLogFileTask {
   }
 
   private void findTarOrJar(List<File> list, File path) {
-    for (File file : Objects.requireNonNull(path.listFiles())) {
+    for (File file : path.listFiles()) {
       // navigate to the target directory:
-      if (file.isDirectory() && "target".equals(file.getName())) {
-        // find the tar.gz file or the jar file in the target path.
-        // note: only one of the two can be selected, which cannot be satisfied at the same time.
-        File tar = null;
-        File jar = null;
-        for (File targetFile : Objects.requireNonNull(file.listFiles())) {
-          // 1) exit once the tar.gz file is found.
-          if (targetFile.getName().endsWith("tar.gz")) {
-            tar = targetFile;
-            break;
-          }
-          // 2) try look for jar files, there may be multiple jars found.
-          if (!targetFile.getName().startsWith("original-")
-              && !targetFile.getName().endsWith("-sources.jar")
-              && targetFile.getName().endsWith(".jar")) {
-            if (jar == null) {
-              jar = targetFile;
-            } else {
-              // there may be multiple jars found, in this case, select the jar with the largest and
-              // return
-              if (targetFile.length() > jar.length()) {
+      if (file.isDirectory()) {
+        if ("target".equals(file.getName())) {
+          // find the tar.gz file or the jar file in the target path.
+          // note: only one of the two can be selected, which cannot be satisfied at the same time.
+          File tar = null;
+          File jar = null;
+          for (File targetFile : file.listFiles()) {
+            // 1) exit once the tar.gz file is found.
+            if (targetFile.getName().endsWith("tar.gz")) {
+              tar = targetFile;
+              break;
+            }
+            // 2) try look for jar files, there may be multiple jars found.
+            if (!targetFile.getName().startsWith("original-")
+                && !targetFile.getName().endsWith("-sources.jar")
+                && targetFile.getName().endsWith(Constant.JAR_SUFFIX)) {
+              if (jar == null) {
                 jar = targetFile;
+              } else {
+                if (targetFile.length() > jar.length()) {
+                  jar = targetFile;
+                }
               }
             }
           }
-        }
-        File target = tar == null ? jar : tar;
-        if (target == null) {
-          fileLogger.warn("[StreamPark] can't find tar.gz or jar in {}", file.getAbsolutePath());
+          File target = tar == null ? jar : tar;
+          if (target != null) {
+            list.add(target);
+          }
         } else {
-          list.add(target);
+          findTarOrJar(list, file);
         }
-      }
-      if (file.isDirectory()) {
-        findTarOrJar(list, file);
       }
     }
   }

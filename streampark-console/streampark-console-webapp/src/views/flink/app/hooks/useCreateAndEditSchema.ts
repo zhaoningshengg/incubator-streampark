@@ -30,32 +30,33 @@ import {
   renderYarnQueue,
 } from './useFlinkRender';
 
-import { fetchCheckName } from '/@/api/flink/app/app';
+import { fetchCheckName } from '/@/api/flink/app';
 import { RuleObject } from 'ant-design-vue/lib/form';
 import { StoreValue } from 'ant-design-vue/lib/form/interface';
 import { useDrawer } from '/@/components/Drawer';
 import { Alert } from 'ant-design-vue';
 import Icon from '/@/components/Icon';
 import { useMessage } from '/@/hooks/web/useMessage';
-import { fetchVariableAll } from '/@/api/flink/variable';
+import { fetchVariableAll } from '/@/api/resource/variable';
 import {
   fetchFlinkBaseImages,
   fetchK8sNamespaces,
   fetchSessionClusterIds,
-} from '/@/api/flink/app/flinkHistory';
-import { fetchSelect } from '/@/api/flink/project';
-import { fetchAlertSetting } from '/@/api/flink/setting/alert';
-import { fetchFlinkCluster } from '/@/api/flink/setting/flinkCluster';
-import { fetchFlinkEnv, fetchListFlinkEnv } from '/@/api/flink/setting/flinkEnv';
-import { FlinkEnv } from '/@/api/flink/setting/types/flinkEnv.type';
-import { AlertSetting } from '/@/api/flink/setting/types/alert.type';
-import { FlinkCluster } from '/@/api/flink/setting/types/flinkCluster.type';
+} from '/@/api/flink/flinkHistory';
+import { fetchSelect } from '/@/api/resource/project';
+import { fetchAlertSetting } from '/@/api/setting/alert';
+import { fetchFlinkCluster } from '/@/api/flink/flinkCluster';
+import { fetchFlinkEnv, fetchListFlinkEnv } from '/@/api/flink/flinkEnv';
+import { FlinkEnv } from '/@/api/flink/flinkEnv.type';
+import { AlertSetting } from '/@/api/setting/types/alert.type';
+import { FlinkCluster } from '/@/api/flink/flinkCluster.type';
 import { AppTypeEnum, ClusterStateEnum, ExecModeEnum, JobTypeEnum } from '/@/enums/flinkEnum';
 import { isK8sExecMode } from '../utils';
 import { useI18n } from '/@/hooks/web/useI18n';
-import { fetchCheckHadoop } from '/@/api/flink/setting';
-import { fetchTeamResource } from '/@/api/flink/resource';
+import { fetchCheckHadoop } from '/@/api/setting';
+import { fetchTeamResource } from '/@/api/resource/upload';
 const { t } = useI18n();
+
 export interface HistoryRecord {
   k8sNamespace: Array<string>;
   k8sSessionClusterId: Array<string>;
@@ -113,13 +114,7 @@ export const useCreateAndEditSchema = (
         label: 'Flink SQL',
         component: 'Input',
         slot: 'flinkSql',
-        ifShow: ({ values }) => {
-          if (edit?.appId) {
-            return values?.jobType == JobTypeEnum.SQL;
-          } else {
-            return values?.jobType == 'sql';
-          }
-        },
+        ifShow: ({ values }) => values?.jobType == JobTypeEnum.SQL,
         rules: [{ required: true, message: t('flink.app.addAppTips.flinkSqlIsRequiredMessage') }],
       },
       {
@@ -127,39 +122,22 @@ export const useCreateAndEditSchema = (
         label: t('flink.app.resource'),
         component: 'Select',
         render: ({ model }) => renderStreamParkResource({ model, resources: unref(teamResource) }),
-        ifShow: ({ values }) => {
-          if (edit?.appId) {
-            return values.jobType == JobTypeEnum.SQL;
-          } else {
-            return values?.jobType == 'sql';
-          }
-        },
+        ifShow: ({ values }) => values.jobType == JobTypeEnum.SQL,
       },
       {
         field: 'dependency',
         label: t('flink.app.dependency'),
         component: 'Input',
         slot: 'dependency',
-        ifShow: ({ values }) => {
-          if (edit?.appId) {
-            return values.jobType == JobTypeEnum.SQL;
-          } else {
-            return values?.jobType == 'sql';
-          }
-        },
+        ifShow: ({ values }) => values.jobType != JobTypeEnum.JAR,
       },
       { field: 'configOverride', label: '', component: 'Input', show: false },
       {
         field: 'isSetConfig',
         label: t('flink.app.appConf'),
         component: 'Switch',
-        ifShow: ({ values }) => {
-          if (edit?.appId) {
-            return values?.jobType == JobTypeEnum.SQL && !isK8sExecMode(values.executionMode);
-          } else {
-            return values?.jobType == 'sql' && !isK8sExecMode(values.executionMode);
-          }
-        },
+        ifShow: ({ values }) =>
+          values?.jobType == JobTypeEnum.SQL && !isK8sExecMode(values.executionMode),
         render({ model, field }) {
           return renderIsSetConfig(model, field, registerConfDrawer, openConfDrawer);
         },
@@ -169,7 +147,7 @@ export const useCreateAndEditSchema = (
 
   async function handleFlinkVersion(id: number | string) {
     if (!dependencyRef) return;
-    scalaVersion = await fetchFlinkEnv(id)?.scalaVersion;
+    scalaVersion = (await fetchFlinkEnv(id as string))?.scalaVersion;
     checkPomScalaVersion();
   }
 
@@ -508,7 +486,7 @@ export const useCreateAndEditSchema = (
         component: 'InputTextArea',
         defaultValue: '',
         slot: 'args',
-        ifShow: ({ values }) => (edit?.mode ? true : values.jobType == 'customcode'),
+        ifShow: ({ values }) => (edit?.mode ? true : values.jobType != JobTypeEnum.SQL),
       },
       {
         field: 'description',
@@ -540,9 +518,12 @@ export const useCreateAndEditSchema = (
                 ],
               },
             );
-          } else {
+          } else if (model.jobType == JobTypeEnum.SQL) {
             return getAlertSvgIcon('fql', 'Flink SQL');
+          } else if (model.jobType == JobTypeEnum.PYFLINK) {
+            return getAlertSvgIcon('py', 'Py Flink');
           }
+          return '';
         },
       },
       {
@@ -559,6 +540,7 @@ export const useCreateAndEditSchema = (
           } else if (model.appType == AppTypeEnum.STREAMPARK_SPARK) {
             return getAlertSvgIcon('spark', 'StreamPark Spark');
           }
+          return '';
         },
       },
     ];
